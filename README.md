@@ -28,7 +28,6 @@ This fork hosts the **Clinical Co-Pilot** project — an AI agent embedded in Op
 | --- | --- |
 | **Deployed app** | https://142.93.255.212/ |
 | **Demo login** | `admin` / `pass` |
-| **Audit** | [AUDIT.md](AUDIT.md) |
 | **Hosting** | DigitalOcean Droplet (NYC1), Docker Compose: OpenEMR + MariaDB |
 
 Self-signed HTTPS on the IP URL will show a browser warning. Use demo data only.
