@@ -20,6 +20,19 @@
 
 [OpenEMR](https://open-emr.org) is a Free and Open Source electronic health records and medical practice management application. It features fully integrated electronic health records, practice management, scheduling, electronic billing, internationalization, free support, a vibrant community, and a whole lot more. It runs on Windows, Linux, Mac OS X, and many other platforms.
 
+### Clinical Co-Pilot (Gauntlet)
+
+This fork hosts the **Clinical Co-Pilot** project — an AI agent embedded in OpenEMR for physicians between patient rooms.
+
+| | |
+| --- | --- |
+| **Deployed app** | https://142.93.255.212/ |
+| **Demo login** | `admin` / `pass` |
+| **Audit** | [AUDIT.md](AUDIT.md) |
+| **Hosting** | DigitalOcean Droplet (NYC1), Docker Compose: OpenEMR + MariaDB |
+
+Self-signed HTTPS on the IP URL will show a browser warning. Use demo data only.
+
 ### Contributing
 
 OpenEMR is a leader in healthcare open source software and comprises a large and diverse community of software developers, medical providers and educators with a very healthy mix of both volunteers and professionals. [Join us and learn how to start contributing today!](https://open-emr.org/wiki/index.php/FAQ#How_do_I_begin_to_volunteer_for_the_OpenEMR_project.3F)
