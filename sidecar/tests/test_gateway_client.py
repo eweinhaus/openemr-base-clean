@@ -12,7 +12,9 @@ from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
 from sidecar.app.gateway_client import (
     GatewayAuthError,
     GatewayClient,
+    GatewayError,
     GatewayForbiddenError,
+    GatewayNetworkError,
     GatewayTimeoutError,
 )
 
@@ -55,12 +57,13 @@ def test_call_tool_returns_facts_payload() -> None:
             "tool": "labs_stub",
             "args": {"limit": 5},
             "pid": 6,
+            "user_id": 1,
             "correlation_id": "corr-123",
         }
         return httpx.Response(200, json=FACTS_PAYLOAD)
 
     client = _client_with_transport(httpx.MockTransport(handler))
-    result = client.call_tool("labs_stub", {"limit": 5}, 6, "corr-123")
+    result = client.call_tool("labs_stub", {"limit": 5}, 6, "corr-123", 1)
 
     assert result == FACTS_PAYLOAD
 
@@ -72,7 +75,7 @@ def test_call_tool_raises_gateway_auth_error_on_401() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayAuthError):
-        client.call_tool("labs_stub", {}, 6, "corr-123")
+        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
 
 
 def test_call_tool_raises_gateway_forbidden_error_on_403() -> None:
@@ -82,7 +85,7 @@ def test_call_tool_raises_gateway_forbidden_error_on_403() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayForbiddenError):
-        client.call_tool("labs_stub", {}, 6, "corr-123")
+        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
 
 
 def test_call_tool_raises_gateway_timeout_error() -> None:
@@ -92,4 +95,24 @@ def test_call_tool_raises_gateway_timeout_error() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayTimeoutError):
-        client.call_tool("labs_stub", {}, 6, "corr-123")
+        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
+
+
+def test_call_tool_raises_gateway_error_on_400() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"ok": False, "error": "not_implemented"})
+
+    client = _client_with_transport(httpx.MockTransport(handler))
+
+    with pytest.raises(GatewayError, match="not_implemented"):
+        client.call_tool("unknown_tool", {}, 6, "corr-123", 1)
+
+
+def test_call_tool_raises_gateway_network_error() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    client = _client_with_transport(httpx.MockTransport(handler))
+
+    with pytest.raises(GatewayNetworkError):
+        client.call_tool("labs_stub", {}, 6, "corr-123", 1)

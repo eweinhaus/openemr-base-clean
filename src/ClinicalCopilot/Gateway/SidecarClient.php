@@ -15,7 +15,9 @@ declare(strict_types=1);
 namespace OpenEMR\ClinicalCopilot\Gateway;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use RuntimeException;
 
 final class SidecarClient
@@ -48,25 +50,37 @@ final class SidecarClient
      * } $payload
      *
      * @throws GuzzleException
-     * @throws RuntimeException When the sidecar returns a non-success status
+     * @throws RuntimeException When the sidecar is unreachable, times out, or returns non-success
      */
     public function streamChat(array $payload): void
     {
         $base = rtrim($this->sidecarBaseUrl, '/');
-        $response = $this->client->request('POST', $base . '/v1/chat', [
-            'headers' => [
-                'Accept' => 'text/event-stream',
-                'Content-Type' => 'application/json',
-                'X-Copilot-Internal-Secret' => $this->internalSecret,
-                'X-Correlation-Id' => $payload['correlation_id'],
-            ],
-            'json' => $payload,
-            'stream' => true,
-        ]);
+        try {
+            $response = $this->client->request('POST', $base . '/v1/chat', [
+                'headers' => [
+                    'Accept' => 'text/event-stream',
+                    'Content-Type' => 'application/json',
+                    'X-Copilot-Internal-Secret' => $this->internalSecret,
+                    'X-Correlation-Id' => $payload['correlation_id'],
+                ],
+                'json' => $payload,
+                'stream' => true,
+            ]);
+        } catch (ConnectException $e) {
+            throw new RuntimeException('sidecar_unreachable', 0, $e);
+        } catch (RequestException $e) {
+            $msg = strtolower($e->getMessage());
+            if (str_contains($msg, 'timed out') || str_contains($msg, 'timeout')) {
+                throw new RuntimeException('sidecar_timeout', 0, $e);
+            }
+            throw new RuntimeException('sidecar_request_failed', 0, $e);
+        } catch (GuzzleException $e) {
+            throw new RuntimeException('sidecar_request_failed', 0, $e);
+        }
 
         $status = $response->getStatusCode();
         if ($status < 200 || $status >= 300) {
-            throw new RuntimeException('Sidecar chat request failed with HTTP ' . $status);
+            throw new RuntimeException('sidecar_http_' . $status);
         }
 
         $body = $response->getBody();

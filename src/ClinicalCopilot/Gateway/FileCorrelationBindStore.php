@@ -50,6 +50,44 @@ final class FileCorrelationBindStore implements CorrelationBindStoreInterface
         if ($written === false) {
             throw new RuntimeException('Failed to write correlation bind file: ' . $path);
         }
+
+        $this->sweepExpired();
+    }
+
+    /**
+     * Remove expired bind files so the directory does not grow unbounded.
+     * Expired entries are otherwise only deleted when read back via get().
+     */
+    private function sweepExpired(): void
+    {
+        $paths = glob($this->directory . DIRECTORY_SEPARATOR . '*.json');
+        if ($paths === false) {
+            return;
+        }
+
+        $now = time();
+        foreach ($paths as $path) {
+            $contents = @file_get_contents($path);
+            if ($contents === false) {
+                continue;
+            }
+
+            try {
+                $decoded = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                @unlink($path);
+                continue;
+            }
+
+            if (!is_array($decoded) || !isset($decoded['exp']) || !is_int($decoded['exp'])) {
+                @unlink($path);
+                continue;
+            }
+
+            if ($decoded['exp'] <= $now) {
+                @unlink($path);
+            }
+        }
     }
 
     public function get(string $correlationId): ?CorrelationBind

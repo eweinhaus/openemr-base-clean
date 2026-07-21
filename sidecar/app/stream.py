@@ -2,25 +2,43 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterator, Optional
 
+from .errors import ERROR_UNEXPECTED, sse_error_payload
 from .gateway_client import GatewayClient
 from .graph import build_graph
 from .llm import MAX_TRANSCRIPT_TURNS
-from .state import GENERIC_ERROR_MESSAGE, GraphState
+from .state import GraphState
+
+logger = logging.getLogger(__name__)
 
 
 def build_initial_state(
     *,
     correlation_id: str,
     pid: Optional[int],
+    user_id: Optional[int],
     message: str,
     transcript: list[Any],
 ) -> GraphState:
-    truncated = list(transcript[-MAX_TRANSCRIPT_TURNS:]) if transcript else []
+    truncated: list[Any] = []
+    if transcript:
+        for entry in transcript[-MAX_TRANSCRIPT_TURNS:]:
+            if not isinstance(entry, dict):
+                continue
+            role = entry.get("role")
+            text = entry.get("text")
+            if role not in ("user", "assistant") or not isinstance(text, str):
+                continue
+            cleaned = text.strip()
+            if not cleaned:
+                continue
+            truncated.append({"role": role, "text": cleaned[:4000]})
     return GraphState(
         correlation_id=correlation_id,
         pid=pid,
+        user_id=user_id,
         message=message,
         transcript=truncated,
         tool_results=[],
@@ -35,33 +53,50 @@ def iter_chat_events(
     gateway: GatewayClient,
     correlation_id: str,
     pid: Optional[int],
+    user_id: Optional[int],
     message: str,
     transcript: list[Any],
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Sync generator: progress during graph stream, then clinical/error + done."""
-    graph = build_graph(gateway)
-    initial = build_initial_state(
-        correlation_id=correlation_id,
-        pid=pid,
-        message=message,
-        transcript=transcript,
-    )
+    try:
+        graph = build_graph(gateway)
+        initial = build_initial_state(
+            correlation_id=correlation_id,
+            pid=pid,
+            user_id=user_id,
+            message=message,
+            transcript=transcript,
+        )
 
-    final_state: GraphState = dict(initial)
+        final_state: GraphState = dict(initial)
 
-    for update in graph.stream(initial, stream_mode="updates"):
-        for _node_name, node_update in update.items():
-            if not isinstance(node_update, dict):
-                continue
-            for progress in node_update.get("progress_messages", []):
-                if isinstance(progress, str) and progress:
-                    yield ("progress", {"message": progress})
-            final_state.update(node_update)
+        for update in graph.stream(initial, stream_mode="updates"):
+            for _node_name, node_update in update.items():
+                if not isinstance(node_update, dict):
+                    continue
+                for progress in node_update.get("progress_messages", []):
+                    if isinstance(progress, str) and progress:
+                        yield ("progress", {"message": progress})
+                final_state.update(node_update)
 
-    if final_state.get("error"):
-        yield ("error", {"message": GENERIC_ERROR_MESSAGE})
-        return
+        error_code = final_state.get("error")
+        if error_code:
+            yield (
+                "error",
+                sse_error_payload(str(error_code), correlation_id=correlation_id),
+            )
+            return
 
-    clinical_text = final_state.get("clinical_text", "")
-    yield ("clinical", {"text": clinical_text})
-    yield ("done", {"correlation_id": correlation_id})
+        clinical_text = final_state.get("clinical_text", "")
+        yield ("clinical", {"text": clinical_text})
+        yield ("done", {"correlation_id": correlation_id})
+    except Exception:
+        # Never abort mid-stream without an error frame (keeps hybrid SSE contract).
+        logger.exception(
+            "Chat graph failed unexpectedly",
+            extra={"correlation_id": correlation_id},
+        )
+        yield (
+            "error",
+            sse_error_payload(ERROR_UNEXPECTED, correlation_id=correlation_id),
+        )

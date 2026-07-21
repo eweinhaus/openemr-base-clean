@@ -13,14 +13,14 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .auth import CORRELATION_HEADER, SECRET_HEADER, verify_secret
+from .auth import SECRET_HEADER, verify_secret
 from .gateway_client import GatewayClient
 from .sse import format_sse
 from .stream import iter_chat_events
 
 DEFAULT_GATEWAY_TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3.5-haiku"
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 
 
 @dataclass(frozen=True)
@@ -65,9 +65,16 @@ class ChatRequest(BaseModel):
 
 
 def _require_secret_at_startup() -> None:
-    if not os.environ.get("COPILOT_INTERNAL_SECRET"):
+    secret = os.environ.get("COPILOT_INTERNAL_SECRET", "")
+    if not secret:
         print("COPILOT_INTERNAL_SECRET is required", file=sys.stderr)
         sys.exit(1)
+    if secret == "dev-copilot-secret-change-me":
+        print(
+            "WARNING: COPILOT_INTERNAL_SECRET is the weak default; "
+            "rotate before any public deploy",
+            file=sys.stderr,
+        )
 
 
 @asynccontextmanager
@@ -125,8 +132,12 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
         )
 
     openrouter["configured"] = bool(settings.openrouter_api_key)
-    ready = gateway.get("reachable") is True and (
-        not settings.openrouter_api_key or openrouter.get("reachable") is True
+    # A missing OpenRouter key means clinical turns will fail — report unready
+    # so a health probe catches the misconfiguration instead of masking it.
+    ready = (
+        gateway.get("reachable") is True
+        and bool(settings.openrouter_api_key)
+        and openrouter.get("reachable") is True
     )
     return {
         "ready": ready,
@@ -141,6 +152,7 @@ def _chat_event_iterator(
     *,
     correlation_id: str,
     pid: Optional[int],
+    user_id: Optional[int],
     message: str,
     transcript: List[Any],
 ) -> Iterator[str]:
@@ -153,6 +165,7 @@ def _chat_event_iterator(
         gateway=gateway,
         correlation_id=correlation_id,
         pid=pid,
+        user_id=user_id,
         message=message,
         transcript=transcript,
     ):
@@ -190,6 +203,7 @@ async def chat(
             settings,
             correlation_id=correlation_id,
             pid=body.pid,
+            user_id=body.user_id,
             message=body.message,
             transcript=body.transcript,
         ),

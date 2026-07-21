@@ -24,7 +24,6 @@ use OpenEMR\ClinicalCopilot\Gateway\FileCorrelationBindStore;
 use OpenEMR\ClinicalCopilot\Gateway\ToolProxyService;
 use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
 use OpenEMR\Core\OEGlobalsBag;
-use Throwable;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -87,7 +86,7 @@ $error = $result['error'] ?? null;
 if (($result['ok'] ?? false) !== true) {
     $status = match ($error) {
         'unauthorized' => 401,
-        'bind_missing', 'pid_mismatch' => 403,
+        'bind_missing', 'pid_mismatch', 'user_mismatch' => 403,
         'invalid_request', 'not_implemented' => 400,
         default => 400,
     };

@@ -1,4 +1,4 @@
-"""Tests for verify_claims, build_tool_index, and assemble_clinical."""
+"""Tests for verify_claims, build_tool_fact_map, filter_refusals, and assemble_clinical."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from sidecar.app.claims import (
     Locator,
     Refusal,
     assemble_clinical,
+    build_tool_fact_map,
     build_tool_index,
+    filter_refusals,
     verify_claims,
 )
+from sidecar.app.state import DOSING_REFUSAL
 
-DOSING_REFUSAL = (
-    "No retrieved label source for dosing — I won't guess."
-)
+DOSING_REFUSAL_TEXT = DOSING_REFUSAL.text
 EMPTY_MESSAGE = "Not enough verified chart data to answer from the record."
 
 
@@ -47,36 +48,38 @@ def test_invented_locator_dropped() -> None:
         ],
         refusals=[],
     )
-    tool_index = build_tool_index(
+    fact_map = build_tool_fact_map(
         _tool_results_with_fact("procedure_result", "42")
     )
 
-    verified = verify_claims(draft, tool_index)
+    verified = verify_claims(draft, fact_map)
 
     assert verified == []
 
 
-def test_matching_locator_kept() -> None:
+def test_matching_locator_uses_tool_fact_text_not_model_prose() -> None:
     draft = DraftClaims(
         claims=[
             Claim(
-                text="Creatinine 1.4 mg/dL on 2026-06-01",
+                text="Creatinine 9.9 mg/dL — invented by model",
                 source_type="chart",
                 locator=Locator(table="procedure_result", id="42"),
             )
         ],
         refusals=[],
     )
-    tool_index = build_tool_index(
-        _tool_results_with_fact("procedure_result", "42", "Creatinine 1.4")
+    fact_map = build_tool_fact_map(
+        _tool_results_with_fact("procedure_result", "42", "Creatinine 1.4 mg/dL")
     )
 
-    verified = verify_claims(draft, tool_index)
+    verified = verify_claims(draft, fact_map)
 
     assert len(verified) == 1
-    assert verified[0].text == "Creatinine 1.4 mg/dL on 2026-06-01"
+    assert verified[0].text == "Creatinine 1.4 mg/dL"
+    assert "9.9" not in verified[0].text
     assert verified[0].locator.table == "procedure_result"
     assert verified[0].locator.id == "42"
+    assert verified[0].excerpt == "excerpt"
 
 
 def test_research_claim_dropped() -> None:
@@ -90,11 +93,11 @@ def test_research_claim_dropped() -> None:
         ],
         refusals=[],
     )
-    tool_index = build_tool_index(
+    fact_map = build_tool_fact_map(
         _tool_results_with_fact("dailymed", "123")
     )
 
-    verified = verify_claims(draft, tool_index)
+    verified = verify_claims(draft, fact_map)
 
     assert verified == []
 
@@ -110,10 +113,10 @@ def test_all_fail_verify_assemble_returns_honest_empty_message() -> None:
         ],
         refusals=[],
     )
-    tool_index = build_tool_index(
+    fact_map = build_tool_fact_map(
         _tool_results_with_fact("procedure_result", "42")
     )
-    verified = verify_claims(draft, tool_index)
+    verified = verify_claims(draft, fact_map)
 
     text = assemble_clinical(verified, draft.refusals)
 
@@ -121,9 +124,27 @@ def test_all_fail_verify_assemble_returns_honest_empty_message() -> None:
     assert "Invented fact" not in text
 
 
+def test_filter_refusals_drops_unknown_codes_and_canonicalizes() -> None:
+    refusals = [
+        Refusal(code="no_research", text="Model-authored dosing prose that looks clinical"),
+        Refusal(code="sneaky", text="Creatinine is 99 mg/dL"),
+        Refusal(code="no_research", text="duplicate"),
+    ]
+
+    filtered = filter_refusals(
+        refusals,
+        canonical={DOSING_REFUSAL.code: DOSING_REFUSAL},
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0].code == "no_research"
+    assert filtered[0].text == DOSING_REFUSAL_TEXT
+    assert "99 mg/dL" not in filtered[0].text
+
+
 def test_meds_dosing_refusal_appears_in_assembled_text() -> None:
     refusals = [
-        Refusal(code="no_research", text=DOSING_REFUSAL),
+        Refusal(code="no_research", text=DOSING_REFUSAL_TEXT),
     ]
     verified = [
         Claim(
@@ -136,4 +157,35 @@ def test_meds_dosing_refusal_appears_in_assembled_text() -> None:
     text = assemble_clinical(verified, refusals)
 
     assert "Patient on metformin 500 mg" in text
-    assert DOSING_REFUSAL in text
+    assert DOSING_REFUSAL_TEXT in text
+
+
+def test_duplicate_locators_verified_once() -> None:
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Creatinine mention one",
+                source_type="chart",
+                locator=Locator(table="procedure_result", id="42"),
+            ),
+            Claim(
+                text="Creatinine mention two",
+                source_type="chart",
+                locator=Locator(table="procedure_result", id="42"),
+            ),
+        ],
+        refusals=[],
+    )
+    fact_map = build_tool_fact_map(
+        _tool_results_with_fact("procedure_result", "42", "Creatinine 1.4 mg/dL")
+    )
+
+    verified = verify_claims(draft, fact_map)
+
+    assert len(verified) == 1
+    assert verified[0].text == "Creatinine 1.4 mg/dL"
+
+
+def test_build_tool_index_matches_fact_map_keys() -> None:
+    tools = _tool_results_with_fact("lists", "101", "Diabetes")
+    assert build_tool_index(tools) == set(build_tool_fact_map(tools).keys())

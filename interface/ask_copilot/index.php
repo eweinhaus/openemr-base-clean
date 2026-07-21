@@ -3,7 +3,8 @@
 /**
  * Ask Co-Pilot chat chrome (iframe tab).
  *
- * Empty transcript on load; patient gate via Finder; streams replies from
+ * Empty transcript on load; unbound patients get a blocking schedule picker
+ * popup (today's appointments + Finder fallback). Streams replies from
  * session-proxy SSE at stream.php. XSS-safe client rendering.
  *
  * @package   OpenEMR
@@ -13,17 +14,25 @@
 
 require_once("../globals.php");
 
+use OpenEMR\Common\Acl\AccessDeniedHelper;
+use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
+
+if (!AclMain::aclCheckCore('patients', 'demo')) {
+    AccessDeniedHelper::deny('Ask Co-Pilot access not authorized');
+}
+
 $globalsBag = OEGlobalsBag::getInstance();
 $webroot = $globalsBag->getWebRoot();
 $assetVersion = $globalsBag->getString('v_js_includes');
 $csrfToken = CsrfUtils::collectCsrfToken($session);
 $streamUrl = $webroot . '/interface/ask_copilot/stream.php';
+$scheduleUrl = $webroot . '/interface/ask_copilot/schedule.php';
 // Session pid for gate fallback when this page is top-level (not under main.php iframe).
 $sessionPidRaw = $session->get('pid');
 $sessionPid = is_numeric($sessionPidRaw) ? (int) $sessionPidRaw : 0;
@@ -40,16 +49,14 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
 <body class="body_top">
     <div class="container-fluid ask-copilot" id="ask-copilot-app">
         <header class="ask-copilot-header">
-            <h2 class="ask-copilot-title"><?php echo xlt('Ask Co-Pilot'); ?></h2>
+            <div class="ask-copilot-header-row">
+                <h2 class="ask-copilot-title"><?php echo xlt('Ask Co-Pilot'); ?></h2>
+                <button type="button" id="acp-change-patient" class="btn btn-link btn-sm ask-copilot-change-patient d-none">
+                    <?php echo xlt('Change patient'); ?>
+                </button>
+            </div>
             <div id="acp-patient-line" class="ask-copilot-patient-line text-muted" aria-live="polite"></div>
         </header>
-
-        <div id="acp-gate" class="alert alert-warning ask-copilot-gate d-none" role="alert">
-            <span id="acp-gate-message"><?php echo text(xl('Select a patient before chatting.')); ?></span>
-            <button type="button" id="acp-open-finder" class="btn btn-sm btn-primary ml-2">
-                <?php echo xlt('Select patient'); ?>
-            </button>
-        </div>
 
         <div id="acp-messages" class="ask-copilot-messages" aria-live="polite"></div>
 
@@ -69,18 +76,54 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
         </div>
     </div>
 
+    <div id="acp-picker-backdrop" class="ask-copilot-picker-backdrop d-none"></div>
+    <div
+        id="acp-picker"
+        class="ask-copilot-picker d-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="acp-picker-title"
+        tabindex="-1"
+    >
+        <h3 id="acp-picker-title" class="ask-copilot-picker-title"><?php echo xlt('Select a patient'); ?></h3>
+        <div id="acp-picker-status" class="ask-copilot-picker-status text-muted" aria-live="polite"></div>
+        <div id="acp-picker-next" class="ask-copilot-picker-next"></div>
+        <div id="acp-picker-list" class="ask-copilot-picker-list"></div>
+        <div class="ask-copilot-picker-footer">
+            <button type="button" id="acp-picker-search" class="btn btn-outline-secondary btn-sm">
+                <?php echo xlt('Search all patients'); ?>
+            </button>
+            <button type="button" id="acp-picker-cancel" class="btn btn-link btn-sm d-none">
+                <?php echo xlt('Cancel'); ?>
+            </button>
+        </div>
+    </div>
+
     <script>
         window.askCopilotConfig = {
             webroot: <?php echo js_escape($webroot); ?>,
             csrf: <?php echo js_escape($csrfToken); ?>,
             streamUrl: <?php echo js_escape($streamUrl); ?>,
+            scheduleUrl: <?php echo js_escape($scheduleUrl); ?>,
             sessionPid: <?php echo $sessionPid > 0 ? (int) $sessionPid : 'null'; ?>,
             strings: {
                 selectPatient: <?php echo xlj('Select a patient before chatting.'); ?>,
                 enterMessage: <?php echo xlj('Enter a message.'); ?>,
                 streamFail: <?php echo xlj('Something went wrong. Try again.'); ?>,
+                streamIncomplete: <?php echo xlj('Stream ended before a reply finished. Try again.'); ?>,
                 patientChanged: <?php echo xlj('Patient changed. Clear the chat and try again.'); ?>,
-                patientPrefix: <?php echo xlj('Patient'); ?>
+                patientPrefix: <?php echo xlj('Patient'); ?>,
+                nextPatient: <?php echo xlj('Next'); ?>,
+                appointmentsToday: <?php echo xlj('Appointments today'); ?>,
+                scheduleLoading: <?php echo xlj('Loading schedule...'); ?>,
+                scheduleEmpty: <?php echo xlj('No appointments today. Use Search all patients.'); ?>,
+                scheduleError: <?php echo xlj('Could not load the schedule.'); ?>,
+                retry: <?php echo xlj('Retry'); ?>,
+                openingChart: <?php echo xlj('Opening chart...'); ?>,
+                bindTimeout: <?php echo xlj('Could not confirm the patient selection. Try again.'); ?>,
+                useFinder: <?php echo xlj('Select the patient from the search tab.'); ?>,
+                confirmSwitch: <?php echo xlj('Switching patients clears this chat. Continue?'); ?>,
+                dobPrefix: <?php echo xlj('DOB'); ?>
             }
         };
     </script>

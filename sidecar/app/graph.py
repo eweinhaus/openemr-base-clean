@@ -16,6 +16,7 @@ from .nodes.verify import verify_node
 from .state import GraphState
 
 AfterRefuse = Literal["route", "emit"]
+AfterRoute = Literal["tools", "emit"]
 AfterTools = Literal["draft", "emit"]
 AfterDraft = Literal["verify", "emit"]
 
@@ -24,6 +25,12 @@ def _after_refuse(state: GraphState) -> AfterRefuse:
     if state.get("error") or state.get("clinical_text"):
         return "emit"
     return "route"
+
+
+def _after_route(state: GraphState) -> AfterRoute:
+    if state.get("error"):
+        return "emit"
+    return "tools"
 
 
 def _after_tools(state: GraphState) -> AfterTools:
@@ -51,7 +58,7 @@ def build_graph(gateway: GatewayClient):
 
     graph.add_edge(START, "refuse")
     graph.add_conditional_edges("refuse", _after_refuse, {"route": "route", "emit": "emit"})
-    graph.add_edge("route", "tools")
+    graph.add_conditional_edges("route", _after_route, {"tools": "tools", "emit": "emit"})
     graph.add_conditional_edges("tools", _after_tools, {"draft": "draft", "emit": "emit"})
     graph.add_conditional_edges("draft", _after_draft, {"verify": "verify", "emit": "emit"})
     graph.add_edge("verify", "emit")

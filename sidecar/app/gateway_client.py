@@ -58,12 +58,14 @@ class GatewayClient:
         args: dict[str, Any],
         pid: int,
         correlation_id: str,
+        user_id: int,
     ) -> dict[str, Any]:
-        """POST to tool_proxy with secret, correlation id, and pid fail-closed echo."""
+        """POST to tool_proxy with secret, correlation id, and pid/user fail-closed echo."""
         payload = {
             "tool": tool,
             "args": args,
             "pid": pid,
+            "user_id": user_id,
             "correlation_id": correlation_id,
         }
         headers = {

@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 import re
 
-from ..claims import Refusal, build_tool_index, verify_claims
+from ..claims import (
+    Refusal,
+    build_tool_fact_map,
+    filter_refusals,
+    verify_claims,
+)
 from ..state import DOSING_REFUSAL, GraphState
 
 logger = logging.getLogger(__name__)
@@ -14,6 +19,10 @@ _DOSING_PATTERN = re.compile(
     r"\b(dose|dosing|dosage|titrat(?:e|ion)|how\s+much|mg\s*/?\s*kg)\b",
     re.IGNORECASE,
 )
+
+_CANONICAL_REFUSALS: dict[str, Refusal] = {
+    DOSING_REFUSAL.code: DOSING_REFUSAL,
+}
 
 
 def _message_looks_like_dosing(message: str) -> bool:
@@ -28,8 +37,8 @@ def verify_node(state: GraphState) -> dict[str, object]:
     if draft is None:
         return {}
 
-    tool_index = build_tool_index(tool_results)
-    verified = verify_claims(draft, tool_index)
+    fact_map = build_tool_fact_map(tool_results)
+    verified = verify_claims(draft, fact_map)
 
     dropped = len(draft.claims) - len(verified)
     if dropped > 0:
@@ -41,10 +50,15 @@ def verify_node(state: GraphState) -> dict[str, object]:
             },
         )
 
-    refusals: list[Refusal] = list(draft.refusals)
-    route = state.get("route")
+    refusals = filter_refusals(
+        list(draft.refusals),
+        canonical=_CANONICAL_REFUSALS,
+    )
+    # Only append the dosing refusal when the question is actually about dosing.
+    # A plain "what meds is the patient on?" turn already carries verified Rx
+    # facts; an unconditional refusal there reads as contradictory noise.
     message = state.get("message", "")
-    if route == "meds" or _message_looks_like_dosing(message):
+    if _message_looks_like_dosing(message):
         if not any(r.code == DOSING_REFUSAL.code for r in refusals):
             refusals.append(DOSING_REFUSAL)
 

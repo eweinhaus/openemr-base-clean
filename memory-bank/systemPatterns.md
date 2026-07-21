@@ -14,8 +14,11 @@ OpenEMR-side co-pilot code in `/src` only; extend `BaseService`. MVP chart path 
 ## OpenEMR UI shell (for first-class pages)
 
 - Post-login shell: `interface/main/tabs/main.php` — navbar + **iframe tabs**
-- Menu: `interface/main/tabs/menu/menus/standard.json`
-- **Ask Co-Pilot:** Calendar/Messages-style top-level tab (`requirement: 0`); patient **picker** if no `pid`; tool-layer still fail-closed
+- Menu: `interface/main/tabs/menu/menus/standard.json` — **do not edit** for Co-Pilot
+- **Ask Co-Pilot:** custom module `oe-module-ask-copilot` → `AskCopilotMenuSubscriber` (`menu_id=acp0`, `target=acp`, `requirement=0`); chrome at `interface/ask_copilot/`; stream via session-proxy `stream.php`
+- **Patient gate (popup):** unbound → non-dismissible dialog over dimmed chat (composer disabled). Loads provider-scoped today schedule from `schedule.php` (GET + CSRF; session `authUserID` only). UI: Next card (`next_pid`) → remaining appts → Search all patients (Finder). Select via `top.RTop` → `demographics.php?set_pid=` then fast-poll session pid. Bound: header **Change patient** (confirm if transcript non-empty). Never auto-bind.
+- Schedule service: `src/ClinicalCopilot/Schedule/` — terminal statuses `x ? ! > $ %` excluded; next = earliest start ≥ now−15m in configured timezone. Non-recurring `pc_eventDate = today` only (MVP).
+- Chat JS: prefer `top.getSessionValue('pid')`; fallback `askCopilotConfig.sessionPid` when page is top-level (not under main iframe)
 
 ## Ambiguity / tradeoffs
 

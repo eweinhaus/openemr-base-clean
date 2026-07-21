@@ -2,9 +2,13 @@
 
 ## Current focus
 
-**PRD 03 LangGraph sidecar implemented** (local pytest green). PRDs 01–02 remain in tree. Next: **PRD 04 real chart services** behind tool_proxy (replace stub facts), then research (05) / citations (06) / LangSmith (07). Goal remains interview MVP on **live DO**.
+**Local Co-Pilot LLM path green (2026-07-21):** OpenRouter credits funded; model pin `anthropic/claude-haiku-4.5`. Session `stream.php` smoke (admin, pid 2) → progress → clinical → done. User confirmed UI Send works.
 
-Sidecar is FastAPI + LangGraph (`refuse → route → tools → draft → code verify → emit`); hybrid SSE; OpenRouter Haiku for route+draft only. Chart tools still **fixture stubs** via gateway (`patient_context_stub` / `labs_stub` / `meds_stub`). Compose `copilot-sidecar` has OpenRouter + gateway tool URL env (no host ports; `--workers 1`).
+**Earlier same day:** patient schedule picker popup + QA hardening shipped locally (not yet on DO).
+
+**DO still behind local:** overlay rsync (picker + schedule + QA), `OPENROUTER_MODEL=anthropic/claude-haiku-4.5` + key/credits on `/opt/openemr/.env`, sidecar recreate, optional same-day appt seed, browser-smoke on https://142.93.255.212/.
+
+Next: **DO redeploy/smoke**; then **PRD 04** real chart services behind tool_proxy.
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -44,7 +48,8 @@ Sidecar is FastAPI + LangGraph (`refuse → route → tools → draft → code v
 ### Agent stack
 
 - Hybrid OpenEMR gateway + LangGraph sidecar
-- OpenRouter **Haiku everywhere** (MVP); temp near zero for factual turns
+- OpenRouter **Haiku everywhere** (MVP); pin **`anthropic/claude-haiku-4.5`** (retired `claude-3.5-haiku` → 404); temp near zero for factual turns
+- `llm_http_error` = OpenRouter HTTP status (404 bad slug, 402 no credits, etc.) — not “missing key” (`llm_not_configured`)
 - LangSmith redacted + app correlation IDs + disclosure log
 
 ### Research (UC-3)
@@ -57,14 +62,17 @@ Sidecar is FastAPI + LangGraph (`refuse → route → tools → draft → code v
 ### Verification / streaming / state
 
 - Structured claim→source; **cite-or-silence** on primary clinical path (no skim-able warning as verify substitute)
+- Verify emits **tool fact text** for matching locators (never model prose); refusals allowlisted (`no_research` canonical)
 - Demo softening (decision guide): separate hard-labeled **`unverified`** block OK if needed; prefer refuse when unsure; never mix into verified prose
 - **Hybrid SSE:** progress early; clinical after verify
-- **Open-tab transcript** until closed (resend/session-held); no pre-ask cache / durable checkpointer for MVP
+- **Open-tab transcript** until closed (resend/session-held); sanitized role/text only; no pre-ask cache / durable checkpointer for MVP
 - Patient switch: no silent pid continue
+- Ask Co-Pilot ACL: `patients/demo` on index + stream; tool_proxy re-checks bind **pid + user_id**
 
 ### UX (locked)
 
 - First-class **Ask Co-Pilot** tab; empty chat start; citation hyperlinks → in-pane popup; concise; omit > guess
+- Unbound → **blocking schedule picker popup** (not a warning bar); provider-only today schedule; explicit click to bind; Change patient clears thread after confirm
 
 ### Demo / agent decision policy (2026-07-21)
 
@@ -83,15 +91,32 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 - **Stub chart facts until PRD 04:** tool_proxy returns fixture locators (not live PHP services / DB).
 - **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used for PRD 03 verification. DO/local should rebuild `copilot-sidecar` once pull works; set `OPENROUTER_API_KEY` on host.
+- **DO overlay bind-mounts (not fork-built image):** Co-Pilot PHP lives under `/opt/openemr/overlay/` mounted into stock `openemr/openemr:latest`; survives recreate. Full fork image still deferred.
+- **OPENROUTER_API_KEY missing on DO** — sidecar up but route/draft will fail until key is set in `/opt/openemr/.env`.
 - Per-turn tool tickets (using correlation bind file store for MVP).
 - Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
-- Live pid watcher (client `bound_pid` + refresh gate only).
-- Meds dosing always refused in PRD 03 (no research tools yet — PRD 05).
+- Citation popups deferred (PRD 06).
+- Dosing refusal now keyword-gated (`dose|dosing|dosage|titrate|how much|mg/kg`) — non-dosing meds turns ship facts without refusal; research-backed dosing still PRD 05.
+- No rate limiting on `stream.php` (OpenRouter cost exposure) — production hardening, out of MVP scope.
+- **Dev compose still defaults** `COPILOT_INTERNAL_SECRET` to weak local value (production compose now requires env); rotate before public demo.
+- Entry-script / JS / SidecarClient automated tests still thin (verify/ACL/transcript covered in units).
+- **Picker:** recurring appts not expanded; provider-only schedule (no facility fallback); local demo rows `CoPilot Demo%` need re-seed after day roll / rebuild / DO.
+
+## QA hardening pass (2026-07-21, post-review)
+
+- Gateway timeout default 45→**120s** (stream.php + both compose files) — must cover route+draft (30s LLM budget each); `set_time_limit(0)` in stream.php (php.ini max_execution_time=60 would kill slow turns).
+- stream.php fails closed on `userId <= 0` (broken session) before binding.
+- Sidecar: dosing refusal only for dosing-like messages (not all `meds` routes); verify dedupes claims by locator; refuse node caps message at 4000 chars (mirrors gateway); `/ready` false when `OPENROUTER_API_KEY` missing.
+- JS client: system bubble when stream ends without done/error (was silent); 5s pid poll (skipped while streaming) syncs gate + shows patient-changed notice; removed dup JSDoc.
+- FileCorrelationBindStore sweeps expired bind files on every put.
+- Removed no-op `use Throwable;` in stream.php/tool_proxy.php (emitted PHP warning).
+- Tests updated+added: sidecar pytest 53 pass; ClinicalCopilot isolated PHPUnit 51 pass (2 env skips). DO redeploy needed to pick these up (overlay bind-mounts + sidecar rebuild).
 
 ## Remaining / next
 
-1. PRD 04 chart services behind tool_proxy; then 05–07
-2. Smoke gateway + LangGraph sidecar on DO (`OPENROUTER_API_KEY`, rebuild image); LangSmith + eval/narrative as thin follow-on
+1. Buy OpenRouter credits (account has $0) → recreate sidecar local + DO (`OPENROUTER_MODEL=anthropic/claude-haiku-4.5`) → browser-smoke Send; **rsync overlay** (picker + schedule API + QA fixes), seed DO same-day appts for admin
+2. PRD 04 chart services behind tool_proxy; then 05–07
+3. LangSmith + eval/narrative as thin follow-on
 
 ## Out of scope right now
 

@@ -108,7 +108,7 @@ services:
       # Clinical Co-Pilot session-proxy gateway → LangGraph sidecar
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
       COPILOT_SIDECAR_URL: "${COPILOT_SIDECAR_URL:-http://copilot-sidecar:8080}"
-      COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-45}"
+      COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-120}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -211,7 +211,7 @@ services:
       COPILOT_GATEWAY_TOOL_URL: "${COPILOT_GATEWAY_TOOL_URL:-http://openemr/interface/ask_copilot/tool_proxy.php}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-3.5-haiku}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-haiku-4.5}"
       COPILOT_LLM_TIMEOUT_SECONDS: "${COPILOT_LLM_TIMEOUT_SECONDS:-30}"
       COPILOT_TOOL_TIMEOUT_SECONDS: "${COPILOT_TOOL_TIMEOUT_SECONDS:-10}"
     # Intentionally no ports: mapping — browser must never reach the sidecar.

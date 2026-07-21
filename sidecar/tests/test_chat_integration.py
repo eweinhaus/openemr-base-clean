@@ -11,11 +11,19 @@ from fastapi.testclient import TestClient
 
 from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
 from sidecar.app.claims import EMPTY_CLINICAL_MESSAGE
+from sidecar.app.errors import (
+    ERROR_DRAFT_PARSE,
+    ERROR_GATEWAY_TOOL,
+    ERROR_GATEWAY_UNREACHABLE,
+    ERROR_INVALID_MESSAGE,
+    ERROR_LLM_UNAVAILABLE,
+    ERROR_UNEXPECTED,
+    message_for_code,
+)
 from sidecar.app.llm import LlmError
 from sidecar.app.main import app
 from sidecar.app.state import (
     DOSING_REFUSAL,
-    GENERIC_ERROR_MESSAGE,
     UNBOUND_MESSAGE,
 )
 
@@ -203,9 +211,33 @@ def test_invented_locator_dropped_from_clinical(
     assert "9.9 mg/dL" not in clinical["text"]
 
 
-def test_meds_route_includes_dosing_refusal(
+def test_dosing_question_includes_dosing_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_MEDS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: MEDS_STUB_RESULT,
+    )
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What dose of metformin should I titrate to?"),
+    )
+    clinical = next(data for name, data in events if name == "clinical")
+
+    assert "Metformin 500 mg" in clinical["text"]
+    assert DOSING_REFUSAL_TEXT in clinical["text"]
+
+
+def test_med_list_question_has_no_dosing_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plain 'what meds' turn ships verified Rx facts without refusal noise."""
     monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
     monkeypatch.setattr(
         "sidecar.app.nodes.draft.draft_claims_raw",
@@ -223,7 +255,30 @@ def test_meds_route_includes_dosing_refusal(
     clinical = next(data for name, data in events if name == "clinical")
 
     assert "Metformin 500 mg" in clinical["text"]
-    assert DOSING_REFUSAL_TEXT in clinical["text"]
+    assert DOSING_REFUSAL_TEXT not in clinical["text"]
+
+
+def test_oversized_message_yields_error_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Messages beyond the gateway cap are refused before any LLM/tool work."""
+    route_mock = MagicMock(return_value="labs")
+    gateway_mock = MagicMock(return_value=LABS_STUB_RESULT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        gateway_mock,
+    )
+
+    events = _stream_chat(monkeypatch, _chat_payload(message="x" * 4001))
+
+    error = next(data for name, data in events if name == "error")
+    assert error["code"] == ERROR_INVALID_MESSAGE
+    assert error["message"] == message_for_code(ERROR_INVALID_MESSAGE)
+    assert error["correlation_id"] == "corr-int-1"
+    assert not any(name == "clinical" for name, _ in events)
+    route_mock.assert_not_called()
+    gateway_mock.assert_not_called()
 
 
 def test_missing_pid_refuses_without_llm_or_gateway(
@@ -268,9 +323,151 @@ def test_llm_error_yields_generic_error_sse(
     events = _stream_chat(monkeypatch)
 
     error = next(data for name, data in events if name == "error")
-    assert error["message"] == GENERIC_ERROR_MESSAGE
+    assert error["code"] == ERROR_LLM_UNAVAILABLE
+    assert error["message"] == message_for_code(ERROR_LLM_UNAVAILABLE)
+    assert error["correlation_id"] == "corr-int-1"
     assert "OpenRouter" not in error["message"]
     assert not any(name == "clinical" for name, _ in events)
+
+
+def test_route_llm_error_yields_generic_error_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_route(*_a: object, **_k: object) -> str:
+        raise LlmError("OpenRouter request failed")
+
+    draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
+    gateway_mock = MagicMock(return_value=LABS_STUB_RESULT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", _raise_route)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        gateway_mock,
+    )
+
+    events = _stream_chat(monkeypatch)
+
+    error = next(data for name, data in events if name == "error")
+    assert error["code"] == ERROR_LLM_UNAVAILABLE
+    assert error["message"] == message_for_code(ERROR_LLM_UNAVAILABLE)
+    assert not any(name == "clinical" for name, _ in events)
+    draft_mock.assert_not_called()
+    gateway_mock.assert_not_called()
+
+
+def test_gateway_network_error_yields_generic_error_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sidecar.app.gateway_client import GatewayNetworkError
+
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+
+    def _raise_network(*_a: object, **_k: object) -> dict:
+        raise GatewayNetworkError("tool_proxy request failed")
+
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        _raise_network,
+    )
+    draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+
+    events = _stream_chat(monkeypatch)
+
+    error = next(data for name, data in events if name == "error")
+    assert error["code"] == ERROR_GATEWAY_UNREACHABLE
+    assert error["message"] == message_for_code(ERROR_GATEWAY_UNREACHABLE)
+    assert not any(name == "clinical" for name, _ in events)
+    draft_mock.assert_not_called()
+
+
+def test_gateway_4xx_error_yields_generic_error_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Base GatewayError (HTTP 400) must become an SSE error, not abort the stream."""
+    from sidecar.app.gateway_client import GatewayError
+
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+
+    def _raise_4xx(*_a: object, **_k: object) -> dict:
+        raise GatewayError("tool_proxy error: not_implemented")
+
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        _raise_4xx,
+    )
+    draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+
+    events = _stream_chat(monkeypatch)
+
+    error = next(data for name, data in events if name == "error")
+    assert error["code"] == ERROR_GATEWAY_TOOL
+    assert error["message"] == message_for_code(ERROR_GATEWAY_TOOL)
+    assert "not_implemented" not in error["message"]
+    assert not any(name == "clinical" for name, _ in events)
+    draft_mock.assert_not_called()
+
+
+def test_unexpected_graph_exception_yields_error_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unhandled graph exceptions must still emit a hybrid SSE error frame."""
+
+    class _BoomGraph:
+        def stream(self, *_a: object, **_k: object):
+            raise RuntimeError("unexpected node failure")
+
+    monkeypatch.setattr(
+        "sidecar.app.stream.build_graph",
+        lambda *_a, **_k: _BoomGraph(),
+    )
+
+    events = _stream_chat(monkeypatch)
+
+    error = next(data for name, data in events if name == "error")
+    assert error["code"] == ERROR_UNEXPECTED
+    assert error["message"] == message_for_code(ERROR_UNEXPECTED)
+    assert "node failure" not in error["message"].lower()
+    assert not any(name == "clinical" for name, _ in events)
+    assert not any(name == "done" for name, _ in events)
+
+
+def test_invented_claim_text_with_valid_locator_replaced_by_tool_fact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: json.dumps(
+            {
+                "claims": [
+                    {
+                        "text": "Serum creatinine 9.9 mg/dL (hallucinated)",
+                        "source_type": "chart",
+                        "locator": {"table": "procedure_result", "id": "501"},
+                    }
+                ],
+                "refusals": [
+                    {
+                        "code": "sneaky",
+                        "text": "Also inventing creatinine 99 via refusal",
+                    }
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_STUB_RESULT,
+    )
+
+    events = _stream_chat(monkeypatch)
+    clinical = next(data for name, data in events if name == "clinical")
+
+    assert "Serum creatinine 1.1 mg/dL" in clinical["text"]
+    assert "9.9" not in clinical["text"]
+    assert "99" not in clinical["text"]
 
 
 def test_invalid_draft_json_yields_error_sse(
@@ -289,5 +486,6 @@ def test_invalid_draft_json_yields_error_sse(
     events = _stream_chat(monkeypatch)
 
     error = next(data for name, data in events if name == "error")
-    assert error["message"] == GENERIC_ERROR_MESSAGE
+    assert error["code"] == ERROR_DRAFT_PARSE
+    assert error["message"] == message_for_code(ERROR_DRAFT_PARSE)
     assert not any(name == "clinical" for name, _ in events)

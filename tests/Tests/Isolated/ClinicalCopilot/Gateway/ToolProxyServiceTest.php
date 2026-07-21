@@ -45,6 +45,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -71,6 +72,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'labs_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -96,6 +98,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'meds_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -119,6 +122,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             'wrong-secret',
             $correlationId,
@@ -137,6 +141,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 999,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -152,6 +157,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             'missing-correlation-id',
@@ -173,6 +179,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -191,6 +198,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 55,
+                'user_id' => 3,
                 'correlation_id' => $correlationId,
             ],
             self::INTERNAL_SECRET,
@@ -210,6 +218,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 42,
+                'user_id' => 1,
                 'correlation_id' => 'other-correlation-id',
             ],
             self::INTERNAL_SECRET,
@@ -235,6 +244,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             '',
@@ -248,6 +258,25 @@ class ToolProxyServiceTest extends TestCase
         $this->assertSame('invalid_request', $missingCorrelation['error']);
     }
 
+    public function testHandleFailsWhenUserIdDoesNotMatchBind(): void
+    {
+        $correlationId = 'abc123correlationid00000013';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'patient_context_stub',
+                'pid' => 100,
+                'user_id' => 99,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('user_mismatch', $result['error']);
+    }
+
     public function testHandleReturnsNotImplementedForUnknownToolAfterBindCheck(): void
     {
         $correlationId = 'abc123correlationid00000009';
@@ -257,6 +286,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'unknown_tool',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -284,6 +314,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 100,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,
@@ -293,6 +324,7 @@ class ToolProxyServiceTest extends TestCase
             [
                 'tool' => 'patient_context_stub',
                 'pid' => 999,
+                'user_id' => 7,
             ],
             self::INTERNAL_SECRET,
             $correlationId,

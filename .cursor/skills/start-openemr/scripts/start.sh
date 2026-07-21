@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 COMPOSE_DIR="$REPO_ROOT/docker/development-easy"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 APP_URL="http://localhost:8300/"
+SIDECAR_SERVICE="copilot-sidecar"
+OPENEMR_SERVICE="openemr"
 MAX_DOCKER_WAIT_SEC=120
 POLL_INTERVAL_SEC=2
 
@@ -48,13 +50,23 @@ ensure_docker() {
   echo "Docker daemon: ready"
 }
 
-stack_healthy() {
-  local status
+service_healthy() {
+  local service="$1" status
   status="$(
     docker compose -f "$COMPOSE_FILE" ps --status running --format '{{.Service}} {{.Health}}' 2>/dev/null \
-      | awk '$1 == "openemr" { print $2; exit }'
+      | awk -v svc="$service" '$1 == svc { print $2; exit }'
   )"
   [[ "$status" == "healthy" ]]
+}
+
+stack_healthy() {
+  service_healthy "$OPENEMR_SERVICE"
+}
+
+# The Clinical Co-Pilot sidecar is part of the stack: Ask Co-Pilot fails closed
+# ("Something went wrong. Try again.") if the gateway can't reach it.
+sidecar_healthy() {
+  service_healthy "$SIDECAR_SERVICE"
 }
 
 http_ok() {
@@ -67,12 +79,12 @@ start_stack() {
   [[ -f "$COMPOSE_FILE" ]] || die "missing compose file: $COMPOSE_FILE"
   need_cmd curl
 
-  if stack_healthy && http_ok; then
-    echo "OpenEMR already running and healthy"
+  if stack_healthy && http_ok && sidecar_healthy; then
+    echo "OpenEMR + Co-Pilot sidecar already running and healthy"
     return 0
   fi
 
-  echo "Starting development-easy stack..."
+  echo "Starting development-easy stack (incl. Co-Pilot sidecar)..."
   (
     cd "$COMPOSE_DIR"
     if command -v openemr-cmd >/dev/null 2>&1; then
@@ -85,6 +97,26 @@ start_stack() {
   )
 }
 
+# Best-effort: report whether the sidecar considers itself ready for live LLM
+# turns. Ask Co-Pilot needs OPENROUTER_API_KEY in the sidecar env; without it
+# the sidecar is reachable (no "connection refused") but turns still error at
+# the route/draft call. Never fails the script.
+sidecar_ready_note() {
+  local ready
+  ready="$(
+    docker compose -f "$COMPOSE_FILE" exec -T "$OPENEMR_SERVICE" \
+      curl -s --max-time 5 http://copilot-sidecar:8080/ready 2>/dev/null || true
+  )"
+  if [[ "$ready" == *'"configured":true'* ]]; then
+    echo "  Co-Pilot:    sidecar healthy, OpenRouter configured (Ask Co-Pilot ready)"
+  else
+    echo "  Co-Pilot:    sidecar healthy, but OPENROUTER_API_KEY not set —"
+    echo "               live Ask Co-Pilot turns will error until you add it to"
+    echo "               $COMPOSE_DIR/.env and re-run, e.g.:"
+    echo "                 echo 'OPENROUTER_API_KEY=sk-or-...' >> $COMPOSE_DIR/.env"
+  fi
+}
+
 print_access() {
   echo
   echo "OpenEMR is up"
@@ -92,6 +124,7 @@ print_access() {
   echo "  App (HTTPS): https://localhost:9300/"
   echo "  Login:       admin / pass"
   echo "  phpMyAdmin:  http://localhost:8310/"
+  sidecar_ready_note
 }
 
 main() {
@@ -107,6 +140,9 @@ main() {
   fi
   if ! http_ok; then
     die "HTTP check failed for $APP_URL"
+  fi
+  if ! sidecar_healthy; then
+    die "copilot-sidecar is not healthy — check: docker compose -f $COMPOSE_FILE logs $SIDECAR_SERVICE"
   fi
 
   print_access

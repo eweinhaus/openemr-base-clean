@@ -14,6 +14,18 @@
     margin-bottom: 0.75rem;
 }
 
+.ask-copilot-header-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.ask-copilot-change-patient {
+    padding: 0;
+    font-size: 0.8125rem;
+}
+
 .ask-copilot-title {
     margin: 0;
     font-size: 1.5rem;
@@ -25,11 +37,134 @@
     font-size: 0.875rem;
 }
 
-.ask-copilot-gate {
+/* Blocking patient picker: chat stays visible behind the dimmed backdrop
+   so an unbound state doesn't look like empty dead UI. */
+.ask-copilot-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(33, 37, 41, 0.5);
+}
+
+.ask-copilot-picker {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    width: min(26rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 2rem));
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+    transform: translate(-50%, -50%);
+}
+
+.ask-copilot-picker-title {
+    margin: 0 0 0.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.ask-copilot-picker-status {
+    min-height: 1.25rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.ask-copilot-picker-next {
+    margin-bottom: 0.5rem;
+}
+
+.ask-copilot-picker-card,
+.ask-copilot-picker-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.ask-copilot-picker-card {
+    padding: 0.75rem;
+    border-color: #b8daff;
+    background: #e7f1ff;
+}
+
+.ask-copilot-picker-card:hover:not(:disabled),
+.ask-copilot-picker-row:hover:not(:disabled) {
+    border-color: #80bdff;
+    background: #f0f7ff;
+}
+
+.ask-copilot-picker-card:disabled,
+.ask-copilot-picker-row:disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.ask-copilot-picker-badge {
+    flex: 0 0 auto;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #fff;
+    background: #007bff;
+    border-radius: 0.25rem;
+}
+
+.ask-copilot-picker-time {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    color: #495057;
+}
+
+.ask-copilot-picker-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ask-copilot-picker-dob {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    color: #6c757d;
+}
+
+.ask-copilot-picker-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    margin-bottom: 0.5rem;
+}
+
+.ask-copilot-picker-list-heading {
+    margin-bottom: 0.25rem;
+    font-size: 0.8125rem;
+}
+
+.ask-copilot-picker-row {
+    margin-bottom: 0.25rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.ask-copilot-picker-footer {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.75rem;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #dee2e6;
 }
 
 .ask-copilot-messages {

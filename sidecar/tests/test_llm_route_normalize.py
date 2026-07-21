@@ -76,7 +76,7 @@ def test_route_message_truncates_transcript_to_last_eight_turns(
     mock_client.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="meds"))]
     )
-    transcript = [{"role": "user", "content": f"turn-{index}"} for index in range(10)]
+    transcript = [{"role": "user", "text": f"turn-{index}"} for index in range(10)]
 
     with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}, clear=False):
         route_message("Refill lisinopril", transcript=transcript)

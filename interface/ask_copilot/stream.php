@@ -18,22 +18,31 @@
 
 require_once("../globals.php");
 
+use OpenEMR\ClinicalCopilot\Gateway\CopilotStreamError;
 use OpenEMR\ClinicalCopilot\Gateway\FileCorrelationBindStore;
 use OpenEMR\ClinicalCopilot\Gateway\SessionGateway;
 use OpenEMR\ClinicalCopilot\Gateway\SidecarClient;
+use OpenEMR\ClinicalCopilot\Gateway\TranscriptSanitizer;
 use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
 use OpenEMR\ClinicalCopilot\Sse\SseEvent;
+use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\OEGlobalsBag;
-use Throwable;
 
 const ASK_COPILOT_MESSAGE_MAX_LENGTH = 4000;
-const ASK_COPILOT_TRANSCRIPT_MAX_ENTRIES = 20;
+const ASK_COPILOT_WEAK_SECRET = 'dev-copilot-secret-change-me';
 
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
 
 CsrfUtils::checkCsrfInput(INPUT_POST, dieOnFail: true);
+
+if (!AclMain::aclCheckCore('patients', 'demo')) {
+    header('Content-Type: text/event-stream; charset=utf-8');
+    header('Cache-Control: no-cache');
+    echo SseEvent::format('error', CopilotStreamError::payload('access_denied'));
+    exit;
+}
 
 $authUserId = $session->get('authUserID');
 $authUser = $session->get('authUser');
@@ -51,12 +60,16 @@ try {
 } catch (Throwable) {
     header('Content-Type: text/event-stream; charset=utf-8');
     header('Cache-Control: no-cache');
-    echo SseEvent::format('error', ['message' => 'Unable to process request.']);
+    echo SseEvent::format('error', CopilotStreamError::payload('invalid_request'));
     exit;
 }
 
 // Release the session lock so the rest of the UI stays responsive while we stream.
 session_write_close();
+
+// Streaming turns can exceed max_execution_time (route + draft LLM calls);
+// lift the script limit — the sidecar/gateway timeouts bound the turn instead.
+@set_time_limit(0);
 
 header('Content-Type: text/event-stream; charset=utf-8');
 header('Cache-Control: no-cache');
@@ -85,13 +98,20 @@ $emit = static function (string $event, array $data): void {
 $rawMessage = filter_input(INPUT_POST, 'message', FILTER_UNSAFE_RAW, FILTER_REQUIRE_SCALAR);
 $message = is_string($rawMessage) ? trim($rawMessage) : '';
 
-if ($message === '' || strlen($message) > ASK_COPILOT_MESSAGE_MAX_LENGTH) {
-    $emit('error', ['message' => 'Unable to process request.']);
+if ($message === '' || mb_strlen($message, 'UTF-8') > ASK_COPILOT_MESSAGE_MAX_LENGTH) {
+    $emit('error', CopilotStreamError::payload('invalid_request', $context->correlationId));
     exit;
 }
 
 if (!$context->isBound() || $context->pid === null) {
-    $emit('error', ['message' => 'Select a patient before chatting.']);
+    $emit('error', CopilotStreamError::payload('unbound_patient', $context->correlationId));
+    exit;
+}
+
+// Fail closed on a broken session with no usable user id — the tool proxy
+// would reject the bind anyway (user_id must be > 0), so refuse up front.
+if ($context->userId <= 0) {
+    $emit('error', CopilotStreamError::payload('invalid_request', $context->correlationId));
     exit;
 }
 
@@ -99,7 +119,7 @@ $rawBoundPid = filter_input(INPUT_POST, 'bound_pid', FILTER_UNSAFE_RAW, FILTER_R
 if (is_string($rawBoundPid) && trim($rawBoundPid) !== '') {
     $clientBoundPid = (int) trim($rawBoundPid);
     if ($clientBoundPid > 0 && $clientBoundPid !== $context->pid) {
-        $emit('error', ['message' => 'Patient changed. Clear the chat and try again.']);
+        $emit('error', CopilotStreamError::payload('patient_changed', $context->correlationId));
         exit;
     }
 }
@@ -110,7 +130,7 @@ if (is_string($rawTranscript) && $rawTranscript !== '') {
     try {
         $decoded = json_decode($rawTranscript, true, 512, JSON_THROW_ON_ERROR);
         if (is_array($decoded)) {
-            $transcript = array_slice(array_values($decoded), -ASK_COPILOT_TRANSCRIPT_MAX_ENTRIES);
+            $transcript = TranscriptSanitizer::sanitize(array_values($decoded));
         }
     } catch (Throwable) {
         $transcript = [];
@@ -124,18 +144,24 @@ $disclosurePath = $siteDir . '/documents/copilot_disclosure.log';
 
 $secret = getenv('COPILOT_INTERNAL_SECRET');
 $sidecarUrl = getenv('COPILOT_SIDECAR_URL');
+// Default must cover route + draft LLM calls (up to COPILOT_LLM_TIMEOUT_SECONDS each)
+// plus tool round-trips, so a slow-but-successful turn is not aborted mid-stream.
 $timeoutRaw = getenv('COPILOT_GATEWAY_TIMEOUT_SECONDS');
-$timeoutSeconds = is_numeric($timeoutRaw) ? (float) $timeoutRaw : 45.0;
+$timeoutSeconds = is_numeric($timeoutRaw) ? (float) $timeoutRaw : 120.0;
 
 if (!is_string($secret) || $secret === '' || !is_string($sidecarUrl) || $sidecarUrl === '') {
     error_log('Ask Co-Pilot gateway misconfigured: missing COPILOT_INTERNAL_SECRET or COPILOT_SIDECAR_URL');
-    $emit('error', ['message' => 'Something went wrong. Try again.']);
+    $emit('error', CopilotStreamError::payload('gateway_misconfigured', $context->correlationId));
     exit;
+}
+
+if ($secret === ASK_COPILOT_WEAK_SECRET) {
+    error_log('Ask Co-Pilot: COPILOT_INTERNAL_SECRET is still the weak default; rotate before public demo');
 }
 
 if (!is_dir($bindDir) && !mkdir($bindDir, 0775, true) && !is_dir($bindDir)) {
     error_log('Ask Co-Pilot gateway failed to create bind directory');
-    $emit('error', ['message' => 'Something went wrong. Try again.']);
+    $emit('error', CopilotStreamError::payload('gateway_bind_store', $context->correlationId));
     exit;
 }
 
@@ -161,7 +187,8 @@ try {
         'transcript' => $transcript,
     ]);
 } catch (Throwable $e) {
-    error_log('Ask Co-Pilot stream error: ' . $e->getMessage());
+    $code = CopilotStreamError::codeFromThrowable($e);
+    error_log('Ask Co-Pilot stream error [' . $code . ']: ' . $e->getMessage());
     try {
         $disclosureLog = new DisclosureLog($disclosurePath);
         $disclosureLog->write([
@@ -169,10 +196,10 @@ try {
             'correlation_id' => $context->correlationId,
             'user_id' => $context->userId,
             'pid' => $context->pid,
-            'reason' => 'sidecar_error',
+            'reason' => $code,
         ]);
     } catch (Throwable) {
         // ignore secondary log failures
     }
-    $emit('error', ['message' => 'Something went wrong. Try again.']);
+    $emit('error', CopilotStreamError::payload($code, $context->correlationId));
 }

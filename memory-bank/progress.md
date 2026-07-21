@@ -16,20 +16,27 @@
 - [x] `ARCHITECTURE.md` (Stage 5 hard gate) — ~500w summary + plan tracing to UC-1/2/3
 - [x] Synthea import on local + DO (~6 patients each); clinical richness + FHIR UUIDs verified; missing-RxNorm seed on both
 - [x] `docs/ai-decision-guide.md` — ambiguity / shortcuts / cut order / escalation (local, untracked; sits under ARCHITECTURE)
-- [x] **PRD 01** Ask Co-Pilot tab + module + stub SSE client (`interface/ask_copilot/`, `oe-module-ask-copilot`)
-- [x] **PRD 02** session-proxy gateway spine (local): `SessionGateway`, bind store, `DisclosureLog`, `SidecarClient`, `tool_proxy.php`, stub sidecar, Compose wiring; isolated tests green (44 ClinicalCopilot)
-- [x] **PRD 03** LangGraph sidecar spine (local): FastAPI + StateGraph (refuse→route→tools→draft→verify→emit), claim schema + code verify, hybrid SSE, OpenRouter Haiku route/draft, enriched stub tools, `/health`+soft `/ready`; sidecar pytest 40 green; ToolProxyService isolated 12 green
+- [x] **PRD 01** Ask Co-Pilot tab + module + SSE client (`interface/ask_copilot/`, `oe-module-ask-copilot`); local smoke re-verified 2026-07-21 (menu, gate, send → clinical echo for pid 2)
+- [x] **PRD 02** session-proxy gateway spine (local): `SessionGateway`, bind store, `DisclosureLog`, `SidecarClient`, `tool_proxy.php`, stub sidecar, Compose wiring; isolated tests green
+- [x] **PRD 03** LangGraph sidecar spine (local): FastAPI + StateGraph (refuse→route→tools→draft→verify→emit), claim schema + code verify, hybrid SSE, OpenRouter Haiku route/draft, enriched stub tools, `/health`+soft `/ready`; sidecar pytest green
+- [x] **PRD 01–03 review hardening (2026-07-21):** verify uses tool fact text + allowlisted refusals; route/network errors → SSE error; ACL on index/stream; transcript sanitize; bind user_id check; production compose requires `COPILOT_INTERNAL_SECRET`
+- [x] **DO deploy (2026-07-21):** overlay bind-mounts + `copilot-sidecar` on https://142.93.255.212/; module enabled; health OK. Pending OpenRouter key + Send smoke.
+- [x] **QA static review + fix pass (2026-07-21):** gateway timeout 120s + `set_time_limit(0)`; userId fail-closed; dosing refusal keyword-gated; locator dedupe; sidecar 4000-char cap; `/ready` requires OpenRouter key; JS silent-stream error + 5s pid poll; bind-file sweep; tests green (pytest 53 / PHPUnit 51). Not yet on DO.
+- [x] **Patient schedule picker popup (2026-07-21):** blocking dialog over chat; `schedule.php` + `src/ClinicalCopilot/Schedule/`; Next / today list / Finder; Change patient; Jest 20 + ClinicalCopilot isolated 93 OK; local demo appts seeded. Not yet on DO.
 
 ## Remaining (MVP → Early)
 
+- [ ] Buy OpenRouter credits + confirm Send smoke (model slug fixed to `claude-haiku-4.5`); rsync overlay (picker) + seed DO appts
 - [ ] PRD 04–07 (real chart tools → research → citations/SSE polish → LangSmith stubs)
-- [ ] Deploy/smoke gateway + LangGraph sidecar on DO (Compose rebuild + `OPENROUTER_API_KEY`)
 - [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
 
 ## Known issues
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
+- **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
+- **OpenRouter model slug** — `anthropic/claude-3.5-haiku` retired (404); default now `anthropic/claude-haiku-4.5`
+- **OpenRouter credits $0** — key present but chat returns 402 until credits purchased; then recreate sidecar local + DO
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source

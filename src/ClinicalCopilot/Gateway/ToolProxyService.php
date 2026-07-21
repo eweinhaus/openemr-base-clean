@@ -44,21 +44,28 @@ final class ToolProxyService
     public function handle(array $body, string $providedSecret, string $correlationIdFromHeader): array
     {
         if (!hash_equals((string) $this->internalSecret, (string) $providedSecret)) {
-            $this->logResult(false, 'unauthorized', null, null, null);
+            $this->logResult(false, 'unauthorized', null, null, null, null);
 
             return ['ok' => false, 'error' => 'unauthorized'];
         }
 
         $tool = $body['tool'] ?? null;
         if (!is_string($tool) || trim($tool) === '') {
-            $this->logResult(false, 'invalid_request', null, null, null);
+            $this->logResult(false, 'invalid_request', null, null, null, null);
 
             return ['ok' => false, 'error' => 'invalid_request'];
         }
 
         $pid = $body['pid'] ?? null;
         if (!is_int($pid)) {
-            $this->logResult(false, 'invalid_request', null, null, $tool);
+            $this->logResult(false, 'invalid_request', null, null, null, $tool);
+
+            return ['ok' => false, 'error' => 'invalid_request'];
+        }
+
+        $userId = $body['user_id'] ?? null;
+        if (!is_int($userId) || $userId <= 0) {
+            $this->logResult(false, 'invalid_request', $pid, null, null, $tool);
 
             return ['ok' => false, 'error' => 'invalid_request'];
         }
@@ -67,7 +74,7 @@ final class ToolProxyService
         if ($correlationId === '') {
             $bodyCorrelationId = $body['correlation_id'] ?? null;
             if (!is_string($bodyCorrelationId) || trim($bodyCorrelationId) === '') {
-                $this->logResult(false, 'invalid_request', $pid, null, $tool);
+                $this->logResult(false, 'invalid_request', $pid, $userId, null, $tool);
 
                 return ['ok' => false, 'error' => 'invalid_request'];
             }
@@ -77,24 +84,30 @@ final class ToolProxyService
 
         $bind = $this->bindStore->get($correlationId);
         if ($bind === null) {
-            $this->logResult(false, 'bind_missing', $pid, $correlationId, $tool);
+            $this->logResult(false, 'bind_missing', $pid, $userId, $correlationId, $tool);
 
             return ['ok' => false, 'error' => 'bind_missing'];
         }
 
         if ($pid !== $bind->pid) {
-            $this->logResult(false, 'pid_mismatch', $pid, $correlationId, $tool);
+            $this->logResult(false, 'pid_mismatch', $pid, $userId, $correlationId, $tool);
 
             return ['ok' => false, 'error' => 'pid_mismatch'];
         }
 
+        if ($userId !== $bind->userId) {
+            $this->logResult(false, 'user_mismatch', $pid, $userId, $correlationId, $tool);
+
+            return ['ok' => false, 'error' => 'user_mismatch'];
+        }
+
         if (!in_array($tool, self::STUB_TOOLS, true)) {
-            $this->logResult(false, 'not_implemented', $pid, $correlationId, $tool);
+            $this->logResult(false, 'not_implemented', $pid, $userId, $correlationId, $tool);
 
             return ['ok' => false, 'error' => 'not_implemented'];
         }
 
-        $this->logResult(true, 'ok', $pid, $correlationId, $tool);
+        $this->logResult(true, 'ok', $pid, $userId, $correlationId, $tool);
 
         return [
             'ok' => true,
@@ -177,6 +190,7 @@ final class ToolProxyService
         bool $pass,
         string $reason,
         ?int $pid,
+        ?int $userId,
         ?string $correlationId,
         ?string $tool,
     ): void {
@@ -199,6 +213,10 @@ final class ToolProxyService
 
         if ($pid !== null) {
             $fields['pid'] = $pid;
+        }
+
+        if ($userId !== null) {
+            $fields['user_id'] = $userId;
         }
 
         if ($tool !== null && $tool !== '') {

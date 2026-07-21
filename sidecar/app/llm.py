@@ -14,7 +14,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 Route = Literal["brief", "labs", "meds"]
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3.5-haiku"
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 DEFAULT_LLM_TIMEOUT_SECONDS = 30.0
 MAX_TRANSCRIPT_TURNS = 8
 LLM_TEMPERATURE = 0.0
@@ -47,7 +47,14 @@ _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=N
 
 
 class LlmError(Exception):
-    """Raised when an OpenRouter LLM call fails."""
+    """Raised when an OpenRouter LLM call fails.
+
+    ``code`` is a stable, non-PHI token surfaced on SSE error frames for debugging.
+    """
+
+    def __init__(self, message: str, *, code: str = "llm_unavailable") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def set_correlation_id(correlation_id: str | None) -> None:
@@ -119,7 +126,21 @@ def _build_draft_user_prompt(
 def _truncate_transcript(transcript: list | None) -> list[Any]:
     if not transcript:
         return []
-    return list(transcript[-MAX_TRANSCRIPT_TURNS:])
+    sanitized: list[dict[str, str]] = []
+    for entry in transcript:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        text = entry.get("text")
+        if role not in ("user", "assistant") or not isinstance(text, str):
+            continue
+        cleaned = text.strip()
+        if not cleaned:
+            continue
+        if len(cleaned) > 4000:
+            cleaned = cleaned[:4000]
+        sanitized.append({"role": role, "text": cleaned})
+    return list(sanitized[-MAX_TRANSCRIPT_TURNS:])
 
 
 def _format_transcript(transcript: list | None) -> str:
@@ -144,7 +165,10 @@ def _load_llm_config() -> tuple[str, str, str, float]:
 def _get_client() -> OpenAI:
     api_key, base_url, _, timeout = _load_llm_config()
     if not api_key:
-        raise LlmError("OPENROUTER_API_KEY is not configured")
+        raise LlmError(
+            "OPENROUTER_API_KEY is not configured",
+            code="llm_not_configured",
+        )
     return OpenAI(
         api_key=api_key,
         base_url=base_url,
@@ -182,13 +206,16 @@ def _chat_completion(
     try:
         response = client.chat.completions.create(**request_kwargs)
     except (APIConnectionError, APITimeoutError) as exc:
-        raise LlmError("OpenRouter request failed") from exc
+        raise LlmError("OpenRouter request failed", code="llm_unavailable") from exc
     except APIStatusError as exc:
-        raise LlmError(f"OpenRouter returned HTTP {exc.status_code}") from exc
+        raise LlmError(
+            f"OpenRouter returned HTTP {exc.status_code}",
+            code="llm_http_error",
+        ) from exc
     except Exception as exc:
-        raise LlmError("OpenRouter request failed") from exc
+        raise LlmError("OpenRouter request failed", code="llm_unavailable") from exc
 
     content = response.choices[0].message.content
     if not isinstance(content, str) or not content.strip():
-        raise LlmError("OpenRouter returned empty content")
+        raise LlmError("OpenRouter returned empty content", code="llm_empty_response")
     return content.strip()

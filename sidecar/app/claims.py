@@ -50,9 +50,15 @@ def parse_claims_json(raw: str) -> DraftClaims:
     return _draft_from_payload(payload)
 
 
-def build_tool_index(tool_results: list[dict[str, Any]]) -> set[tuple[str, str]]:
-    """Index tool facts as (table, id) keys for locator verification."""
-    index: set[tuple[str, str]] = set()
+# Canonical refusal codes the verify node may surface (model text is discarded).
+ALLOWED_REFUSAL_CODES: frozenset[str] = frozenset({"no_research"})
+
+
+def build_tool_fact_map(
+    tool_results: list[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Map (table, id) → {text, excerpt?} from this turn's tool facts."""
+    fact_map: dict[tuple[str, str], dict[str, str]] = {}
     for result in tool_results:
         if not result.get("ok"):
             continue
@@ -67,24 +73,74 @@ def build_tool_index(tool_results: list[dict[str, Any]]) -> set[tuple[str, str]]
                 continue
             table = fact.get("table")
             fact_id = fact.get("id")
-            if table and fact_id is not None:
-                index.add((str(table), str(fact_id)))
-    return index
+            text = fact.get("text")
+            if not table or fact_id is None or not isinstance(text, str) or not text.strip():
+                continue
+            entry: dict[str, str] = {"text": text.strip()}
+            excerpt = fact.get("excerpt")
+            if isinstance(excerpt, str) and excerpt.strip():
+                entry["excerpt"] = excerpt.strip()
+            fact_map[(str(table), str(fact_id))] = entry
+    return fact_map
+
+
+def build_tool_index(tool_results: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    """Index tool facts as (table, id) keys for locator verification."""
+    return set(build_tool_fact_map(tool_results).keys())
 
 
 def verify_claims(
     draft: DraftClaims,
-    tool_index: set[tuple[str, str]],
+    fact_map: dict[tuple[str, str], dict[str, str]],
 ) -> list[Claim]:
-    """Keep only claims with locators present in this turn's tool index."""
+    """Keep chart claims with known locators; replace text with tool fact prose.
+
+    Cite-or-silence: never ship model-authored clinical text for a chart locator.
+    Research claims are dropped until a research verify path exists (PRD 05).
+    """
     verified: list[Claim] = []
+    seen_locators: set[tuple[str, str]] = set()
     for claim in draft.claims:
         if claim.source_type == "research":
             continue
         key = (claim.locator.table, claim.locator.id)
-        if key in tool_index:
-            verified.append(claim)
+        if key in seen_locators:
+            continue
+        fact = fact_map.get(key)
+        if fact is None:
+            continue
+        seen_locators.add(key)
+        fact_text = fact.get("text", "").strip()
+        if not fact_text:
+            continue
+        verified.append(
+            Claim(
+                text=fact_text,
+                source_type="chart",
+                locator=claim.locator,
+                excerpt=fact.get("excerpt") or claim.excerpt,
+            )
+        )
     return verified
+
+
+def filter_refusals(
+    refusals: list[Refusal],
+    *,
+    allowed_codes: frozenset[str] | None = None,
+    canonical: dict[str, Refusal] | None = None,
+) -> list[Refusal]:
+    """Keep only allowlisted refusal codes; replace text with canonical copy."""
+    codes = allowed_codes if allowed_codes is not None else ALLOWED_REFUSAL_CODES
+    canon = canonical or {}
+    filtered: list[Refusal] = []
+    seen: set[str] = set()
+    for refusal in refusals:
+        if refusal.code not in codes or refusal.code in seen:
+            continue
+        seen.add(refusal.code)
+        filtered.append(canon.get(refusal.code, refusal))
+    return filtered
 
 
 def assemble_clinical(verified: list[Claim], refusals: list[Refusal]) -> str:

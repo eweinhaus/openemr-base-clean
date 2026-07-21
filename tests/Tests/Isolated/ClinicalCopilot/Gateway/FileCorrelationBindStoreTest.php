@@ -96,6 +96,26 @@ class FileCorrelationBindStoreTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
+    public function testPutSweepsExpiredBindFiles(): void
+    {
+        $expiredPath = $this->tempDir . DIRECTORY_SEPARATOR . 'aaaa1111.json';
+        $written = file_put_contents($expiredPath, json_encode([
+            'pid' => 10,
+            'user_id' => 2,
+            'exp' => time() - 60,
+        ], JSON_THROW_ON_ERROR));
+
+        if ($written === false) {
+            throw new RuntimeException('Failed to seed expired bind file');
+        }
+
+        $store = new FileCorrelationBindStore($this->tempDir);
+        $store->put('bbbb2222', 42, 7, 600);
+
+        $this->assertFileDoesNotExist($expiredPath);
+        $this->assertNotNull($store->get('bbbb2222'));
+    }
+
     public function testMissingEntryReturnsNull(): void
     {
         $store = new FileCorrelationBindStore($this->tempDir);
