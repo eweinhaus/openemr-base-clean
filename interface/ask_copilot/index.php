@@ -4,7 +4,7 @@
  * Ask Co-Pilot chat chrome (iframe tab).
  *
  * Empty transcript on load; patient gate via Finder; streams replies from
- * stub SSE at stream.php (Wave 1). XSS-safe client rendering.
+ * session-proxy SSE at stream.php. XSS-safe client rendering.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -27,13 +27,15 @@ $streamUrl = $webroot . '/interface/ask_copilot/stream.php';
 // Session pid for gate fallback when this page is top-level (not under main.php iframe).
 $sessionPidRaw = $session->get('pid');
 $sessionPid = is_numeric($sessionPidRaw) ? (int) $sessionPidRaw : 0;
+$assetDir = __DIR__ . '/assets';
+$assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilot.js') ?: 0);
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <title><?php echo xlt('Ask Co-Pilot'); ?></title>
     <?php Header::setupHeader(); ?>
-    <link rel="stylesheet" href="<?php echo attr($webroot); ?>/interface/ask_copilot/assets/ask_copilot.css?v=<?php echo attr($assetVersion); ?>&amp;acp=2">
+    <link rel="stylesheet" href="<?php echo attr($webroot); ?>/interface/ask_copilot/assets/ask_copilot.css?v=<?php echo attr($assetBust); ?>">
 </head>
 <body class="body_top">
     <div class="container-fluid ask-copilot" id="ask-copilot-app">
@@ -82,6 +84,6 @@ $sessionPid = is_numeric($sessionPidRaw) ? (int) $sessionPidRaw : 0;
             }
         };
     </script>
-    <script src="<?php echo attr($webroot); ?>/interface/ask_copilot/assets/ask_copilot.js?v=<?php echo attr($assetVersion); ?>&amp;acp=2"></script>
+    <script src="<?php echo attr($webroot); ?>/interface/ask_copilot/assets/ask_copilot.js?v=<?php echo attr($assetBust); ?>"></script>
 </body>
 </html>
