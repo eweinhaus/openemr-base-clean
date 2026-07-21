@@ -61,7 +61,8 @@ services:
       interval: 1m
       timeout: 5s
       retries: 3
-  # Clinical Co-Pilot stub sidecar — Compose-internal only (no host ports).
+  # Clinical Co-Pilot LangGraph sidecar — Compose-internal only (no host ports).
+  # Single uvicorn worker; set OPENROUTER_API_KEY in the host environment for live turns.
   copilot-sidecar:
     restart: always
     build:
@@ -69,6 +70,12 @@ services:
       dockerfile: Dockerfile
     environment:
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
+      COPILOT_GATEWAY_TOOL_URL: "${COPILOT_GATEWAY_TOOL_URL:-http://openemr/interface/ask_copilot/tool_proxy.php}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-3.5-haiku}"
+      COPILOT_LLM_TIMEOUT_SECONDS: "${COPILOT_LLM_TIMEOUT_SECONDS:-30}"
+      COPILOT_TOOL_TIMEOUT_SECONDS: "${COPILOT_TOOL_TIMEOUT_SECONDS:-10}"
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       start_period: 10s

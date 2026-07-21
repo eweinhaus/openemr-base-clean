@@ -18,12 +18,13 @@
 - [x] `docs/ai-decision-guide.md` — ambiguity / shortcuts / cut order / escalation (local, untracked; sits under ARCHITECTURE)
 - [x] **PRD 01** Ask Co-Pilot tab + module + stub SSE client (`interface/ask_copilot/`, `oe-module-ask-copilot`)
 - [x] **PRD 02** session-proxy gateway spine (local): `SessionGateway`, bind store, `DisclosureLog`, `SidecarClient`, `tool_proxy.php`, stub sidecar, Compose wiring; isolated tests green (44 ClinicalCopilot)
+- [x] **PRD 03** LangGraph sidecar spine (local): FastAPI + StateGraph (refuse→route→tools→draft→verify→emit), claim schema + code verify, hybrid SSE, OpenRouter Haiku route/draft, enriched stub tools, `/health`+soft `/ready`; sidecar pytest 40 green; ToolProxyService isolated 12 green
 
 ## Remaining (MVP → Early)
 
-- [ ] PRD 03–07 (LangGraph sidecar → chart tools → research → citations/SSE polish → health/LangSmith stubs)
-- [ ] Deploy/smoke gateway + sidecar on DO (Compose image build / env)
-- [ ] LangSmith + correlation IDs end-to-end, eval suite, `/health`+`/ready` (thin OK for interview)
+- [ ] PRD 04–07 (real chart tools → research → citations/SSE polish → LangSmith stubs)
+- [ ] Deploy/smoke gateway + LangGraph sidecar on DO (Compose rebuild + `OPENROUTER_API_KEY`)
+- [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
 
 ## Known issues

@@ -2,9 +2,9 @@
 
 ## Current focus
 
-**PRD 02 session-proxy gateway implemented** (local). PRD 01 Ask Co-Pilot tab is in tree. Next: **PRD 03 LangGraph sidecar** (replace stub), then chart tools (04). Goal remains interview MVP on **live DO**.
+**PRD 03 LangGraph sidecar implemented** (local pytest green). PRDs 01–02 remain in tree. Next: **PRD 04 real chart services** behind tool_proxy (replace stub facts), then research (05) / citations (06) / LangSmith (07). Goal remains interview MVP on **live DO**.
 
-Local smoke used **host Python stub sidecar** (`sidecar/stub_app.py` on `:8080`) because `docker build` for `python:3.12-slim` hung on `docker-credential-desktop`. Compose service `copilot-sidecar` is wired (no host ports) for when image pull works; openemr env vars `COPILOT_*` are in development-easy + production compose.
+Sidecar is FastAPI + LangGraph (`refuse → route → tools → draft → code verify → emit`); hybrid SSE; OpenRouter Haiku for route+draft only. Chart tools still **fixture stubs** via gateway (`patient_context_stub` / `labs_stub` / `meds_stub`). Compose `copilot-sidecar` has OpenRouter + gateway tool URL env (no host ports; `--workers 1`).
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -81,15 +81,17 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Deferred debt (shortcuts)
 
-- **PRD 02 local smoke:** host-process stub sidecar instead of Compose-built `copilot-sidecar` image (Docker Hub pull / `docker-credential-desktop` hang). Compose service + Dockerfile exist; DO/local should use Compose once image build works.
+- **Stub chart facts until PRD 04:** tool_proxy returns fixture locators (not live PHP services / DB).
+- **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used for PRD 03 verification. DO/local should rebuild `copilot-sidecar` once pull works; set `OPENROUTER_API_KEY` on host.
 - Per-turn tool tickets (using correlation bind file store for MVP).
 - Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
 - Live pid watcher (client `bound_pid` + refresh gate only).
+- Meds dosing always refused in PRD 03 (no research tools yet — PRD 05).
 
 ## Remaining / next
 
-1. PRD 03 LangGraph sidecar replacing stub; then 04–07
-2. Smoke on DO after runtime waves (gateway + sidecar env); LangSmith + eval/narrative as thin follow-on
+1. PRD 04 chart services behind tool_proxy; then 05–07
+2. Smoke gateway + LangGraph sidecar on DO (`OPENROUTER_API_KEY`, rebuild image); LangSmith + eval/narrative as thin follow-on
 
 ## Out of scope right now
 

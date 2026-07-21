@@ -52,7 +52,62 @@ class ToolProxyServiceTest extends TestCase
 
         $this->assertTrue($result['ok']);
         $this->assertSame('patient_context_stub', $result['tool']);
-        $this->assertSame(['status' => 'not_implemented'], $result['data']);
+        $this->assertArrayHasKey('facts', $result['data']);
+        $this->assertCount(3, $result['data']['facts']);
+        $this->assertSame('lists', $result['data']['facts'][0]['table']);
+        $this->assertSame('101', $result['data']['facts'][0]['id']);
+        $this->assertSame('lists', $result['data']['facts'][1]['table']);
+        $this->assertSame('102', $result['data']['facts'][1]['id']);
+        $this->assertSame('lists', $result['data']['facts'][2]['table']);
+        $this->assertSame('103', $result['data']['facts'][2]['id']);
+    }
+
+    public function testHandleReturnsLabsStubFactsWithLocators(): void
+    {
+        $correlationId = 'abc123correlationid00000011';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'labs_stub',
+                'pid' => 100,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('labs_stub', $result['tool']);
+        $this->assertCount(3, $result['data']['facts']);
+        $this->assertSame('procedure_result', $result['data']['facts'][0]['table']);
+        $this->assertSame('501', $result['data']['facts'][0]['id']);
+        $this->assertSame('procedure_result', $result['data']['facts'][1]['table']);
+        $this->assertSame('502', $result['data']['facts'][1]['id']);
+        $this->assertSame('procedure_result', $result['data']['facts'][2]['table']);
+        $this->assertSame('503', $result['data']['facts'][2]['id']);
+    }
+
+    public function testHandleReturnsMedsStubFactsWithLocators(): void
+    {
+        $correlationId = 'abc123correlationid00000012';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'meds_stub',
+                'pid' => 100,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('meds_stub', $result['tool']);
+        $this->assertCount(2, $result['data']['facts']);
+        $this->assertSame('prescriptions', $result['data']['facts'][0]['table']);
+        $this->assertSame('201', $result['data']['facts'][0]['id']);
+        $this->assertSame('prescriptions', $result['data']['facts'][1]['table']);
+        $this->assertSame('202', $result['data']['facts'][1]['id']);
     }
 
     public function testHandleFailsWhenSecretDoesNotMatch(): void

@@ -105,7 +105,7 @@ services:
       OPENEMR_SETTING_SMTP_Auth: 'TRUE'
       OPENEMR_SETTING_practice_return_email_path: 'noreply@openemr.local'
       OPENEMR_SETTING_Patient_Reminder_Sender_Name: 'OpenEMR Reminders'
-      # Clinical Co-Pilot session-proxy gateway → internal stub sidecar
+      # Clinical Co-Pilot session-proxy gateway → LangGraph sidecar
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
       COPILOT_SIDECAR_URL: "${COPILOT_SIDECAR_URL:-http://copilot-sidecar:8080}"
       COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-45}"
@@ -199,8 +199,8 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  # Clinical Co-Pilot stub sidecar (PRD 02). Compose-internal only — no host ports.
-  # Replaced by LangGraph in PRD 03. Single worker; one-physician demo concurrency.
+  # Clinical Co-Pilot LangGraph sidecar (PRD 03). Compose-internal only — no host ports.
+  # Single uvicorn worker; one-physician demo concurrency. Soft /ready (no crash-loop on OpenRouter blips).
   copilot-sidecar:
     restart: always
     build:
@@ -208,6 +208,12 @@ services:
       dockerfile: Dockerfile
     environment:
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
+      COPILOT_GATEWAY_TOOL_URL: "${COPILOT_GATEWAY_TOOL_URL:-http://openemr/interface/ask_copilot/tool_proxy.php}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-3.5-haiku}"
+      COPILOT_LLM_TIMEOUT_SECONDS: "${COPILOT_LLM_TIMEOUT_SECONDS:-30}"
+      COPILOT_TOOL_TIMEOUT_SECONDS: "${COPILOT_TOOL_TIMEOUT_SECONDS:-10}"
     # Intentionally no ports: mapping — browser must never reach the sidecar.
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]

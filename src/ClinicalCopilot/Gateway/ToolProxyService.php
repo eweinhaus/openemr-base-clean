@@ -18,6 +18,12 @@ use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
 
 final class ToolProxyService
 {
+    private const STUB_TOOLS = [
+        'patient_context_stub',
+        'labs_stub',
+        'meds_stub',
+    ];
+
     public function __construct(
         private readonly CorrelationBindStoreInterface $bindStore,
         private readonly string $internalSecret,
@@ -28,7 +34,12 @@ final class ToolProxyService
     /**
      * @param array<string, mixed> $body
      *
-     * @return array{ok: bool, tool?: string, data?: array<string, string>, error?: string}
+     * @return array{
+     *     ok: bool,
+     *     tool?: string,
+     *     data?: array{facts: list<array{text: string, table: string, id: string|int, excerpt: string}>},
+     *     error?: string
+     * }
      */
     public function handle(array $body, string $providedSecret, string $correlationIdFromHeader): array
     {
@@ -77,7 +88,7 @@ final class ToolProxyService
             return ['ok' => false, 'error' => 'pid_mismatch'];
         }
 
-        if ($tool !== 'patient_context_stub') {
+        if (!in_array($tool, self::STUB_TOOLS, true)) {
             $this->logResult(false, 'not_implemented', $pid, $correlationId, $tool);
 
             return ['ok' => false, 'error' => 'not_implemented'];
@@ -87,9 +98,79 @@ final class ToolProxyService
 
         return [
             'ok' => true,
-            'tool' => 'patient_context_stub',
-            'data' => ['status' => 'not_implemented'],
+            'tool' => $tool,
+            'data' => $this->stubToolData($tool),
         ];
+    }
+
+    /**
+     * @return array{facts: list<array{text: string, table: string, id: string|int, excerpt: string}>}
+     */
+    private function stubToolData(string $tool): array
+    {
+        return match ($tool) {
+            'patient_context_stub' => [
+                'facts' => [
+                    [
+                        'text' => 'Active problem: Type 2 diabetes mellitus (E11.9)',
+                        'table' => 'lists',
+                        'id' => '101',
+                        'excerpt' => 'Problem list — onset 2019-03-14, active',
+                    ],
+                    [
+                        'text' => 'Allergy: Penicillin — rash',
+                        'table' => 'lists',
+                        'id' => '102',
+                        'excerpt' => 'Allergy list — severity moderate',
+                    ],
+                    [
+                        'text' => 'Active problem: Essential hypertension (I10)',
+                        'table' => 'lists',
+                        'id' => '103',
+                        'excerpt' => 'Problem list — onset 2017-08-02, active',
+                    ],
+                ],
+            ],
+            'labs_stub' => [
+                'facts' => [
+                    [
+                        'text' => 'Serum creatinine 1.1 mg/dL (2026-06-01)',
+                        'table' => 'procedure_result',
+                        'id' => '501',
+                        'excerpt' => 'CMP — within reference range',
+                    ],
+                    [
+                        'text' => 'HbA1c 7.2% (2026-05-15)',
+                        'table' => 'procedure_result',
+                        'id' => '502',
+                        'excerpt' => 'Glycemic control — above goal',
+                    ],
+                    [
+                        'text' => 'LDL cholesterol 118 mg/dL (2026-05-15)',
+                        'table' => 'procedure_result',
+                        'id' => '503',
+                        'excerpt' => 'Lipid panel — borderline high',
+                    ],
+                ],
+            ],
+            'meds_stub' => [
+                'facts' => [
+                    [
+                        'text' => 'Metformin 500 mg tablet — take one twice daily with meals',
+                        'table' => 'prescriptions',
+                        'id' => '201',
+                        'excerpt' => 'Active Rx — started 2020-01-10',
+                    ],
+                    [
+                        'text' => 'Lisinopril 10 mg tablet — take one daily',
+                        'table' => 'prescriptions',
+                        'id' => '202',
+                        'excerpt' => 'Active Rx — started 2018-11-03',
+                    ],
+                ],
+            ],
+            default => throw new \InvalidArgumentException('Unsupported stub tool: ' . $tool),
+        };
     }
 
     private function logResult(

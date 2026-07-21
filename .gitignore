@@ -34,6 +34,11 @@ ccdaservice/node_modules
 # testing
 .phpunit.result.cache
 
+# Clinical Co-Pilot sidecar (Python)
+sidecar/.venv/
+sidecar/**/__pycache__/
+sidecar/.pytest_cache/
+
 # dev tool local overrides
 phpcs.xml
 phpstan.neon
