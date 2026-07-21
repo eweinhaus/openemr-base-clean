@@ -16,11 +16,14 @@
 - [x] `ARCHITECTURE.md` (Stage 5 hard gate) — ~500w summary + plan tracing to UC-1/2/3
 - [x] Synthea import on local + DO (~6 patients each); clinical richness + FHIR UUIDs verified; missing-RxNorm seed on both
 - [x] `docs/ai-decision-guide.md` — ambiguity / shortcuts / cut order / escalation (local, untracked; sits under ARCHITECTURE)
+- [x] **PRD 01** Ask Co-Pilot tab + module + stub SSE client (`interface/ask_copilot/`, `oe-module-ask-copilot`)
+- [x] **PRD 02** session-proxy gateway spine (local): `SessionGateway`, bind store, `DisclosureLog`, `SidecarClient`, `tool_proxy.php`, stub sidecar, Compose wiring; isolated tests green (44 ClinicalCopilot)
 
 ## Remaining (MVP → Early)
 
-- [ ] Agent implementation via PRDs for roadmap steps 1–7 (tab → gateway → sidecar → tools → research → citations/SSE → health/LangSmith stubs)
-- [ ] LangSmith + correlation IDs, eval suite, `/health`+`/ready` (thin OK for interview)
+- [ ] PRD 03–07 (LangGraph sidecar → chart tools → research → citations/SSE polish → health/LangSmith stubs)
+- [ ] Deploy/smoke gateway + sidecar on DO (Compose image build / env)
+- [ ] LangSmith + correlation IDs end-to-end, eval suite, `/health`+`/ready` (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
 
 ## Known issues
@@ -33,6 +36,7 @@
 - Missing-RxNorm demo seeds: local Susan Underwood (pid 2, Lisinopril); DO Vincenzo126 Kemmer137 (pid 6, Turmeric free-text)
 - Single-worker 2 GB host will not support meaningful concurrent load (accepted for interview demo)
 - Planning docs (`docs/ai-decision-guide.md`, `docs/directions.md`, `.cursor/`, `memory-bank/`, etc.) may still be local untracked until committed
+- Docker Hub pull / `docker-credential-desktop` can hang locally — blocked Compose build of `copilot-sidecar`; host Python stub used for PRD 02 smoke
 
 ## Schedule reminder (from directions)
 

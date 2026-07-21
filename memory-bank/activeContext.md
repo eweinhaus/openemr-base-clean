@@ -2,7 +2,9 @@
 
 ## Current focus
 
-**`ARCHITECTURE.md` locked**; **Synthea done** (local + DO). **`docs/ai-decision-guide.md`** written (local, untracked) — use for ambiguity, shortcuts, cut order, escalation. Next: implement roadmap via **one PRD per steps 1–7** (`/generate-prd` → `/create-plan-ethan` → `/execute-plan-ethan`). Goal: working interview MVP on **live DO**; discuss unfinished complexity verbally.
+**PRD 02 session-proxy gateway implemented** (local). PRD 01 Ask Co-Pilot tab is in tree. Next: **PRD 03 LangGraph sidecar** (replace stub), then chart tools (04). Goal remains interview MVP on **live DO**.
+
+Local smoke used **host Python stub sidecar** (`sidecar/stub_app.py` on `:8080`) because `docker build` for `python:3.12-slim` hung on `docker-credential-desktop`. Compose service `copilot-sidecar` is wired (no host ports) for when image pull works; openemr env vars `COPILOT_*` are in development-easy + production compose.
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -79,12 +81,15 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Deferred debt (shortcuts)
 
-_None yet — add here when faking non-spine work for demo speed._
+- **PRD 02 local smoke:** host-process stub sidecar instead of Compose-built `copilot-sidecar` image (Docker Hub pull / `docker-credential-desktop` hang). Compose service + Dockerfile exist; DO/local should use Compose once image build works.
+- Per-turn tool tickets (using correlation bind file store for MVP).
+- Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
+- Live pid watcher (client `bound_pid` + refresh gate only).
 
 ## Remaining / next
 
-1. PRD + implement roadmap steps 1–7 per `ARCHITECTURE.md` + `docs/ai-decision-guide.md`
-2. Smoke on DO after runtime waves; LangSmith + eval/narrative as thin follow-on
+1. PRD 03 LangGraph sidecar replacing stub; then 04–07
+2. Smoke on DO after runtime waves (gateway + sidecar env); LangSmith + eval/narrative as thin follow-on
 
 ## Out of scope right now
 

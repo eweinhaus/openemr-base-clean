@@ -105,6 +105,10 @@ services:
       OPENEMR_SETTING_SMTP_Auth: 'TRUE'
       OPENEMR_SETTING_practice_return_email_path: 'noreply@openemr.local'
       OPENEMR_SETTING_Patient_Reminder_Sender_Name: 'OpenEMR Reminders'
+      # Clinical Co-Pilot session-proxy gateway → internal stub sidecar
+      COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
+      COPILOT_SIDECAR_URL: "${COPILOT_SIDECAR_URL:-http://copilot-sidecar:8080}"
+      COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-45}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -191,6 +195,22 @@ services:
     - mailpitvolume:/data
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025/api/v1/messages"]
+      start_period: 10s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  # Clinical Co-Pilot stub sidecar (PRD 02). Compose-internal only — no host ports.
+  # Replaced by LangGraph in PRD 03. Single worker; one-physician demo concurrency.
+  copilot-sidecar:
+    restart: always
+    build:
+      context: ../../sidecar
+      dockerfile: Dockerfile
+    environment:
+      COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
+    # Intentionally no ports: mapping — browser must never reach the sidecar.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       start_period: 10s
       interval: 30s
       timeout: 5s

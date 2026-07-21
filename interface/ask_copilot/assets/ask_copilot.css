@@ -1,0 +1,92 @@
+/**
+ * Ask Co-Pilot — minimal Bootstrap 4.6-friendly layout.
+ */
+
+.ask-copilot {
+    display: flex;
+    flex-direction: column;
+    max-width: 720px;
+    height: calc(100vh - 1.5rem);
+    padding: 0.75rem 1rem 1rem;
+}
+
+.ask-copilot-header {
+    margin-bottom: 0.75rem;
+}
+
+.ask-copilot-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.ask-copilot-patient-line {
+    min-height: 1.25rem;
+    font-size: 0.875rem;
+}
+
+.ask-copilot-gate {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.ask-copilot-messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    background: #fff;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    min-height: 12rem;
+}
+
+.ask-copilot-bubble {
+    max-width: 90%;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.ask-copilot-bubble-user {
+    margin-left: auto;
+    background: #e7f1ff;
+    border: 1px solid #b8daff;
+}
+
+.ask-copilot-bubble-assistant {
+    margin-right: auto;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.ask-copilot-bubble-system {
+    margin-right: auto;
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+}
+
+.ask-copilot-progress {
+    min-height: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.ask-copilot-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.ask-copilot-composer .form-control {
+    flex: 1 1 auto;
+    resize: vertical;
+}
+
+.ask-copilot-composer .btn {
+    flex: 0 0 auto;
+}
