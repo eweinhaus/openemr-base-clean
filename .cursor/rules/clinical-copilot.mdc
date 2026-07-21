@@ -1,0 +1,20 @@
+---
+description: Clinical Co-Pilot (Gauntlet) project conventions and deploy facts
+globs:
+alwaysApply: true
+---
+
+# Clinical Co-Pilot
+
+- Case study north star: `docs/directions.md`. Demo data only; treat LLM (via OpenRouter) as BAA-covered / no training.
+- Stack: **hybrid** session-proxy OpenEMR gateway + **LangGraph** sidecar (single worker, same 2 GB host); **OpenRouter Haiku**; **LangSmith** (redacted). LangGraph ≠ LangSmith.
+- Auth: session-proxy (no browser cookies to sidecar); tool-layer **pid** fail-closed; patient picker if unbound; SMART later.
+- Chart: PHP **services via gateway** (FHIR primary = phase 2). Research: **openFDA → DailyMed**; no PHI in queries; dosing only from retrieved sources; surface label conflicts.
+- Verify: structured claims, cite-or-silence; **hybrid SSE** (progress early; clinical after verify). State: open-tab transcript until closed.
+- Jobs: UC-1 brief · UC-2 labs · UC-3 med decision-support (read-only chart). UX: Ask Co-Pilot tab; empty chat; citation popups; concise; omit > guess.
+- OpenEMR-side code in `/src` (BaseService). Canonical plan: `ARCHITECTURE.md` (+ `docs/architecture-overview.md`).
+- Ambiguity / shortcuts / cut order / escalation: `docs/ai-decision-guide.md` (under ARCHITECTURE). Engineering guesses OK; clinical claims = verified+cited, labeled unverified, or refuse. Fake only non-spine work; note debt in Memory Bank. Live DO > local.
+- Public deploy: https://142.93.255.212/ (`admin`/`pass`). SSH: `ssh -i ~/.ssh/id_ed25519_openemr root@142.93.255.212`. Stack: `/opt/openemr`.
+- Git: `origin` = `eweinhaus/openemr-base-clean`, `upstream` = `Gauntlet-HQ/openemr-base-clean`.
+- Next: PRDs for roadmap steps 1–7 → plan → execute. Synthea local+DO done. Read `memory-bank/` at session start; use decision guide when stuck.
+- Builder: mid-level SWE; PRD/plan carries mental models; don’t assume FHIR/SMART/SSE/OpenEMR fluency. Interview MVP > rubric / production polish.
