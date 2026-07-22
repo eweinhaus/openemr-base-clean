@@ -20,13 +20,15 @@
 - [x] **PRD 02** session-proxy gateway spine (local): `SessionGateway`, bind store, `DisclosureLog`, `SidecarClient`, `tool_proxy.php`, stub sidecar, Compose wiring; isolated tests green
 - [x] **PRD 03** LangGraph sidecar spine (local): FastAPI + StateGraph (refuse→route→tools→draft→verify→emit), claim schema + code verify, hybrid SSE, OpenRouter Haiku route/draft, enriched stub tools, `/health`+soft `/ready`; sidecar pytest green
 - [x] **PRD 01–03 review hardening (2026-07-21):** verify uses tool fact text + allowlisted refusals; route/network errors → SSE error; ACL on index/stream; transcript sanitize; bind user_id check; production compose requires `COPILOT_INTERNAL_SECRET`
-- [x] **DO deploy (2026-07-21):** overlay bind-mounts + `copilot-sidecar` on https://142.93.255.212/; module enabled; health OK. Pending OpenRouter key + Send smoke.
-- [x] **QA static review + fix pass (2026-07-21):** gateway timeout 120s + `set_time_limit(0)`; userId fail-closed; dosing refusal keyword-gated; locator dedupe; sidecar 4000-char cap; `/ready` requires OpenRouter key; JS silent-stream error + 5s pid poll; bind-file sweep; tests green (pytest 53 / PHPUnit 51). Not yet on DO.
-- [x] **Patient schedule picker popup (2026-07-21):** blocking dialog over chat; `schedule.php` + `src/ClinicalCopilot/Schedule/`; Next / today list / Finder; Change patient; Jest 20 + ClinicalCopilot isolated 93 OK; local demo appts seeded. Not yet on DO.
+- [x] **DO deploy (2026-07-21):** overlay bind-mounts + `copilot-sidecar` on https://142.93.255.212/; module enabled; health OK.
+- [x] **QA static review + fix pass (2026-07-21):** gateway timeout 120s + `set_time_limit(0)`; userId fail-closed; dosing refusal keyword-gated; locator dedupe; sidecar 4000-char cap; `/ready` requires OpenRouter key; JS silent-stream error + 5s pid poll; bind-file sweep; tests green (pytest 53 / PHPUnit 51).
+- [x] **Patient schedule picker popup (2026-07-21):** blocking dialog over chat; `schedule.php` + `src/ClinicalCopilot/Schedule/`; Next / today list / Finder; Change patient; Jest 20 + ClinicalCopilot isolated 93 OK; local demo appts seeded.
+- [x] **Local OpenRouter Send smoke (2026-07-21):** model pin `anthropic/claude-haiku-4.5` (old `claude-3.5-haiku` → 404); credits funded (was 402); `stream.php` pid 2 → progress → clinical → done; UI confirmed working.
+- [x] **DO redeploy (2026-07-21 evening):** packaged overlay+sidecar; model pin on droplet; schedule API 200; unbound → `unbound_patient`; pid 6 Send → progress → `draft_parse_failed` (spine OK; full clinical reply not yet green on DO).
 
 ## Remaining (MVP → Early)
 
-- [ ] Buy OpenRouter credits + confirm Send smoke (model slug fixed to `claude-haiku-4.5`); rsync overlay (picker) + seed DO appts
+- [ ] DO: seed same-day appts + fix/stabilize draft parse → clinical → done
 - [ ] PRD 04–07 (real chart tools → research → citations/SSE polish → LangSmith stubs)
 - [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
@@ -35,8 +37,8 @@
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
 - **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
-- **OpenRouter model slug** — `anthropic/claude-3.5-haiku` retired (404); default now `anthropic/claude-haiku-4.5`
-- **OpenRouter credits $0** — key present but chat returns 402 until credits purchased; then recreate sidecar local + DO
+- **DO draft_parse_failed** — OpenRouter path reaches draft on droplet but claim JSON parse can fail; local clinical→done still green
+- **DO schedule empty today** — picker needs seeded `openemr_postcalendar_events` for admin demo
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source

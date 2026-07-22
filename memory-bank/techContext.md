@@ -33,7 +33,7 @@ HTTPS self-signed on bare IP. No DB TLS / MFA on public demo (documented gaps).
 | Piece | Choice |
 | --- | --- |
 | Topology | Hybrid: OpenEMR session-proxy gateway + LangGraph sidecar |
-| LLM | OpenRouter · Haiku everywhere (MVP) |
+| LLM | OpenRouter · Haiku everywhere (MVP); pin `anthropic/claude-haiku-4.5` (not retired `claude-3.5-haiku`) |
 | Framework | LangGraph (Python) |
 | Observability | LangSmith (redacted) + correlation IDs + disclosure log |
 | Chart access | PHP services via gateway (pid-scoped); FHIR phase 2 |

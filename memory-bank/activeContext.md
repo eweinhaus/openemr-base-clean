@@ -2,13 +2,26 @@
 
 ## Current focus
 
-**Local Co-Pilot LLM path green (2026-07-21):** OpenRouter credits funded; model pin `anthropic/claude-haiku-4.5`. Session `stream.php` smoke (admin, pid 2) → progress → clinical → done. User confirmed UI Send works.
+**DO Co-Pilot redeployed (2026-07-21):** overlay (picker + schedule + QA) + sidecar on https://142.93.255.212/. Module active; mounts OK; OpenRouter key set; model pin `anthropic/claude-haiku-4.5`. HTTP smoke: `schedule.php` 200 (empty today appts); unbound stream → `unbound_patient`; pid 6 → progress → `draft_parse_failed` (not 402/404 — spine live; draft JSON parse still flaky on DO).
 
-**Earlier same day:** patient schedule picker popup + QA hardening shipped locally (not yet on DO).
+**Local LLM path still green:** pid 2 → progress → clinical → done.
 
-**DO still behind local:** overlay rsync (picker + schedule + QA), `OPENROUTER_MODEL=anthropic/claude-haiku-4.5` + key/credits on `/opt/openemr/.env`, sidecar recreate, optional same-day appt seed, browser-smoke on https://142.93.255.212/.
+Next: seed DO same-day appts for picker demo; triage `draft_parse_failed` on DO; then **PRD 04** chart services behind tool_proxy.
 
-Next: **DO redeploy/smoke**; then **PRD 04** real chart services behind tool_proxy.
+## PRD 04 decisions (2026-07-21, via ai-decision-guide)
+
+Locked for implementation (engineering guesses; reversible; not stack changes):
+
+- **Tools (rename stubs):** `patient_context` · `labs` · `meds` · `notes` — drop `*_stub` names.
+- **Routes:** `brief` → `patient_context` only; `labs` → `labs`; `meds` → `meds`. `notes` available for follow-up calls (not required on brief if snapshot already embeds selective notes).
+- **Fact contract unchanged:** `{text, table, id, excerpt}` with real table+pk; optional FHIR UUID field when row has one — never invent.
+- **`PatientContextService` snapshot (UC-1):** last visit / reason-on-file if present, active conditions, allergies, active meds, recent labs (capped), selective recent notes (capped + truncated excerpt). Prefer structured facts over notes when both exist.
+- **Caps (simple defaults):** ~15 recent lab results; ~3 recent notes; notes excerpt truncated (no full-note dump). Labs “abnormal” only if chart already flags it — no invented reference-range logic.
+- **Meds tool:** active prescriptions + allergies (chart side of UC-3); missing RxNorm → uncertain identity in fact text; no invented codes; dosing research stays PRD 05.
+- **Implementation:** `/src` services extending `BaseService`; compose existing OpenEMR services where practical; `QueryUtils` only for gaps. `ToolProxyService` dispatches after existing secret + pid/user_id bind checks. Sidecar still gateway-only.
+- **No TTL cache in PRD 04** — defer (AUDIT 30–60s was optional); note as debt if latency hurts demo.
+- **Tests:** few high-value — pid fail-closed still green; fact shaping; one happy-path tool with real/seeded pid. Smoke Synthea local then DO.
+- **Out of PRD 04:** openFDA/DailyMed, citation popups, LangSmith, FHIR-primary, chart writes.
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -92,7 +105,8 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **Stub chart facts until PRD 04:** tool_proxy returns fixture locators (not live PHP services / DB).
 - **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used for PRD 03 verification. DO/local should rebuild `copilot-sidecar` once pull works; set `OPENROUTER_API_KEY` on host.
 - **DO overlay bind-mounts (not fork-built image):** Co-Pilot PHP lives under `/opt/openemr/overlay/` mounted into stock `openemr/openemr:latest`; survives recreate. Full fork image still deferred.
-- **OPENROUTER_API_KEY missing on DO** — sidecar up but route/draft will fail until key is set in `/opt/openemr/.env`.
+- **DO OpenRouter env set** — key present; `OPENROUTER_MODEL=anthropic/claude-haiku-4.5`; Send reaches draft (occasional `draft_parse_failed`).
+- **DO schedule empty** — no same-day `openemr_postcalendar_events` for admin yet; picker falls through to Finder.
 - Per-turn tool tickets (using correlation bind file store for MVP).
 - Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
 - Citation popups deferred (PRD 06).
@@ -114,7 +128,7 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Remaining / next
 
-1. Buy OpenRouter credits (account has $0) → recreate sidecar local + DO (`OPENROUTER_MODEL=anthropic/claude-haiku-4.5`) → browser-smoke Send; **rsync overlay** (picker + schedule API + QA fixes), seed DO same-day appts for admin
+1. Seed DO same-day appts for admin; stabilize DO draft parse → clinical → done
 2. PRD 04 chart services behind tool_proxy; then 05–07
 3. LangSmith + eval/narrative as thin follow-on
 

@@ -37,6 +37,7 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - **LangGraph** = workflow; **LangSmith** = redacted traces — not interchangeable
 - App owns correlation IDs + PHI disclosure / verification log
 - Browser never sends cookies to sidecar
+- OpenRouter model pin: `anthropic/claude-haiku-4.5`. SSE `llm_http_error` = provider HTTP reject (bad slug/credits/etc.); `llm_not_configured` = missing `OPENROUTER_API_KEY`
 
 ## Auth reality + co-pilot policy
 
