@@ -134,6 +134,8 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
     openrouter["configured"] = bool(settings.openrouter_api_key)
     # A missing OpenRouter key means clinical turns will fail — report unready
     # so a health probe catches the misconfiguration instead of masking it.
+    # H10 (PRD 05): do not probe openFDA / DailyMed here — research is
+    # best-effort at tool time and must not gate readiness.
     ready = (
         gateway.get("reachable") is True
         and bool(settings.openrouter_api_key)

@@ -7,6 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .research.constants import (
+    DECISION_SUPPORT_DISCLAIMER,
+    RESEARCH_TOOL_NAME,
+    format_not_on_list,
+)
+
 EMPTY_CLINICAL_MESSAGE = (
     "Not enough verified chart data to answer from the record."
 )
@@ -105,21 +111,22 @@ def verify_claims(
     draft: DraftClaims,
     fact_map: dict[tuple[str, str], dict[str, str]],
 ) -> list[Claim]:
-    """Keep chart claims with known locators; replace text with tool fact prose.
+    """Keep chart/note/research claims with known locators; use tool fact prose.
 
-    Cite-or-silence: never ship model-authored clinical text for a chart locator.
-    Research claims are dropped until a research verify path exists (PRD 05).
+    Cite-or-silence: never ship model-authored clinical text for a known locator.
+    Research claims are verified when their locator is in ``fact_map``; surviving
+    claims keep their original ``source_type`` (never forced to ``chart``).
     """
     verified: list[Claim] = []
     seen_locators: set[tuple[str, str]] = set()
     for claim in draft.claims:
-        if claim.source_type == "research":
+        if claim.source_type not in ("chart", "note", "research"):
             continue
         key = (claim.locator.table, claim.locator.id)
         if key in seen_locators:
             continue
         fact = fact_map.get(key)
-        if fact is None:
+        if not fact:
             continue
         seen_locators.add(key)
         fact_text = fact.get("text", "").strip()
@@ -128,7 +135,7 @@ def verify_claims(
         verified.append(
             Claim(
                 text=fact_text,
-                source_type="chart",
+                source_type=claim.source_type,
                 locator=claim.locator,
                 excerpt=fact.get("excerpt") or claim.excerpt,
             )
@@ -163,20 +170,75 @@ def assemble_clinical(
     tool_domain_errors: dict[str, str] | None = None,
     requested_tools: list[str] | None = None,
 ) -> str:
-    """Join verified claim text, refusals, and empty/unavailable domain lines."""
+    """Join claims → not-on-list → disclaimer? → refusals → domain lines."""
+    results = tool_results or []
     domain_lines = build_domain_status_lines(
-        tool_results=tool_results or [],
+        tool_results=results,
         tool_domain_errors=tool_domain_errors or {},
         requested_tools=requested_tools or [],
     )
+    not_on_list_lines = _not_on_list_lines(results)
+    refusal_texts = [refusal.text for refusal in refusals if refusal.text]
+
     parts: list[str] = []
     if verified:
         parts.extend(claim.text for claim in verified)
-    elif not domain_lines:
-        parts.append(EMPTY_CLINICAL_MESSAGE)
-    parts.extend(refusal.text for refusal in refusals if refusal.text)
+    parts.extend(not_on_list_lines)
+    if _should_include_disclaimer(results, refusals):
+        parts.append(DECISION_SUPPORT_DISCLAIMER)
+    parts.extend(refusal_texts)
     parts.extend(domain_lines)
+
+    if not parts:
+        return EMPTY_CLINICAL_MESSAGE
     return " ".join(parts)
+
+
+def _not_on_list_lines(tool_results: list[dict[str, Any]]) -> list[str]:
+    """Emit not-on-list when any research_label meta has on_chart is False."""
+    lines: list[str] = []
+    seen_drugs: set[str] = set()
+    for result in tool_results:
+        if not isinstance(result, dict) or not result.get("ok"):
+            continue
+        if result.get("tool") != RESEARCH_TOOL_NAME:
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        meta = data.get("meta")
+        if not isinstance(meta, dict) or meta.get("on_chart") is not False:
+            continue
+        drug = meta.get("query_term") or meta.get("display")
+        if not isinstance(drug, str) or not drug.strip():
+            continue
+        drug = drug.strip()
+        if drug in seen_drugs:
+            continue
+        seen_drugs.add(drug)
+        lines.append(format_not_on_list(drug))
+    return lines
+
+
+def _should_include_disclaimer(
+    tool_results: list[dict[str, Any]],
+    refusals: list[Refusal],
+) -> bool:
+    """Disclaimer once when research facts exist or a no_research refusal is present."""
+    if any(refusal.code == "no_research" for refusal in refusals):
+        return True
+    for result in tool_results:
+        if not isinstance(result, dict) or not result.get("ok"):
+            continue
+        if result.get("tool") != RESEARCH_TOOL_NAME:
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        facts = data.get("facts")
+        if isinstance(facts, list) and facts:
+            return True
+    return False
 
 
 def build_domain_status_lines(

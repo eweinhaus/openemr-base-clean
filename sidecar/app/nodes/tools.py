@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable
+from typing import Any, Callable, Mapping, Sequence
 
 from ..errors import (
     ERROR_GATEWAY_AUTH,
@@ -25,6 +26,17 @@ from ..gateway_client import (
     GatewayTimeoutError,
 )
 from ..llm import Route
+from ..research import (
+    RESEARCH_PROGRESS_MESSAGE,
+    ResolveStatus,
+    build_research_tool_result,
+    extract_dailymed_facts,
+    extract_openfda_facts,
+    fetch_label,
+    is_dosing_like,
+    reconcile_on_chart_after_hit,
+    resolve_drug_query,
+)
 from ..state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -34,6 +46,8 @@ ROUTE_TOOLS: dict[Route, list[str]] = {
     "labs": ["labs"],
     "meds": ["meds"],
 }
+
+_FORM_HINT_RE = re.compile(r"\b(ER|XR|SA)\b", re.IGNORECASE)
 
 
 def _gateway_error_code(exc: GatewayError) -> str:
@@ -50,6 +64,112 @@ def _gateway_error_code(exc: GatewayError) -> str:
     return ERROR_GATEWAY_TOOL
 
 
+def _meds_facts_from_results(
+    results: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """Extract ``data.facts`` from the meds chart tool payload, if present."""
+    for payload in results:
+        if payload.get("tool") != "meds":
+            continue
+        data = payload.get("data")
+        if not isinstance(data, Mapping):
+            return []
+        facts = data.get("facts")
+        if isinstance(facts, list):
+            return [f for f in facts if isinstance(f, Mapping)]
+        return []
+    return []
+
+
+def _form_hint_from_message(message: str) -> str | None:
+    match = _FORM_HINT_RE.search(message)
+    if match is None:
+        return None
+    return match.group(1).upper()
+
+
+def _active_rx_texts(meds_facts: Sequence[Mapping[str, Any]]) -> list[str]:
+    texts: list[str] = []
+    for fact in meds_facts:
+        text = fact.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.append(text)
+    return texts
+
+
+def _maybe_append_research(
+    *,
+    route: Route | str,
+    message: str,
+    correlation_id: str,
+    results: list[dict[str, object]],
+    progress_messages: list[str],
+) -> None:
+    """Gate openFDA/DailyMed research onto meds+dosing turns (H8/H11).
+
+    Mutates ``results`` / ``progress_messages`` in place. Never sets graph error.
+    """
+    # H11: research only on meds route — never brief/labs.
+    if route != "meds":
+        return
+    if not is_dosing_like(message):
+        return
+
+    meds_facts = _meds_facts_from_results(results)
+    resolved = resolve_drug_query(message, meds_facts)
+    if resolved is None:
+        return
+    if resolved.status is not ResolveStatus.OK or resolved.query is None:
+        # BLOCKED / NONE → no HTTP, no research progress (verify may refuse).
+        return
+
+    # Progress only when HTTP will actually run.
+    progress_messages.append(RESEARCH_PROGRESS_MESSAGE)
+
+    try:
+        label = fetch_label(resolved.query, correlation_id=correlation_id)
+        if not label.ok or not label.source or not label.set_id:
+            return
+
+        form_hint = _form_hint_from_message(message)
+        if label.source == "openfda" and label.openfda_result is not None:
+            facts = extract_openfda_facts(
+                label.openfda_result,
+                form_hint=form_hint,
+            )
+        elif label.source == "dailymed" and label.dailymed_xml is not None:
+            facts = extract_dailymed_facts(
+                label.dailymed_xml,
+                set_id=label.set_id,
+                form_hint=form_hint,
+            )
+        else:
+            facts = []
+
+        on_chart = reconcile_on_chart_after_hit(
+            resolved.query.on_chart,
+            label.generic_names,
+            label.brand_names,
+            _active_rx_texts(meds_facts),
+        )
+        results.append(
+            build_research_tool_result(
+                facts,
+                on_chart=on_chart,
+                query_term=resolved.query.term,
+                source=label.source,
+                set_id=label.set_id,
+            )
+        )
+    except Exception:
+        # H8: research failure never sets graph error — skip research facts.
+        logger.warning(
+            "Research label fetch failed; skipping research facts",
+            extra={"correlation_id": correlation_id},
+            exc_info=True,
+        )
+
+
 def make_tools_node(gateway: GatewayClient) -> Callable[[GraphState], dict[str, object]]:
     """Build a tools node bound to a gateway client."""
 
@@ -58,6 +178,7 @@ def make_tools_node(gateway: GatewayClient) -> Callable[[GraphState], dict[str, 
         user_id = state.get("user_id")
         correlation_id = state.get("correlation_id", "")
         route = state.get("route", "brief")
+        message = state.get("message", "") or ""
         tool_names = ROUTE_TOOLS.get(route, ["patient_context"])
 
         if pid is None or pid <= 0:
@@ -147,11 +268,20 @@ def make_tools_node(gateway: GatewayClient) -> Callable[[GraphState], dict[str, 
                 "requested_tools": tool_names,
             }
 
+        progress_messages = ["Fetching chart…"]
+        _maybe_append_research(
+            route=route,
+            message=message,
+            correlation_id=correlation_id,
+            results=results,
+            progress_messages=progress_messages,
+        )
+
         return {
             "tool_results": results,
             "tool_domain_errors": domain_errors,
             "requested_tools": tool_names,
-            "progress_messages": ["Fetching chart…"],
+            "progress_messages": progress_messages,
         }
 
     return tools_node

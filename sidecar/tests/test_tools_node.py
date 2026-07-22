@@ -17,6 +17,35 @@ from sidecar.app.gateway_client import (
     GatewayServerError,
 )
 from sidecar.app.nodes.tools import ROUTE_TOOLS, make_tools_node
+from sidecar.app.research.client import LabelFetchResult
+from sidecar.app.research.constants import (
+    RESEARCH_PROGRESS_MESSAGE,
+    RESEARCH_TOOL_NAME,
+    UNCERTAIN_RXNORM_SUFFIX,
+)
+
+
+def _ok_meds_gateway(
+    facts: list[dict[str, Any]] | None = None,
+) -> MagicMock:
+    """Gateway that returns a successful meds chart payload."""
+    gateway = MagicMock()
+    gateway.call_tool.return_value = {
+        "ok": True,
+        "tool": "meds",
+        "data": {
+            "facts": facts
+            if facts is not None
+            else [
+                {
+                    "text": "Simvastatin 20 MG Oral Tablet (RxNorm 312961)",
+                    "table": "prescriptions",
+                    "id": "12",
+                }
+            ]
+        },
+    }
+    return gateway
 
 
 def test_route_tools_names_and_brief_has_four() -> None:
@@ -208,3 +237,202 @@ def test_ok_false_body_counts_as_domain_error_not_success() -> None:
 
     assert result["error"] == ERROR_GATEWAY_TOOL
     assert result.get("tool_domain_errors", {}).get("labs") == ERROR_GATEWAY_TOOL
+
+
+# --- PRD 05 research gate (H8 / H11) -----------------------------------------
+
+
+def test_brief_route_never_calls_research_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H11: research only on meds — brief never invokes fetch_label."""
+    calls: list[Any] = []
+
+    def _fake_fetch(*_a: Any, **_kw: Any) -> LabelFetchResult:
+        calls.append(1)
+        return LabelFetchResult(
+            ok=False, source=None, set_id=None, outcome="miss"
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    gateway = MagicMock()
+
+    def _call(
+        tool: str,
+        _args: dict,
+        _pid: int,
+        _corr: str,
+        _user_id: int,
+    ) -> dict[str, Any]:
+        return {"ok": True, "tool": tool, "data": {"facts": []}}
+
+    gateway.call_tool.side_effect = _call
+    node = make_tools_node(gateway)
+    result = node(
+        {
+            "pid": 6,
+            "user_id": 1,
+            "correlation_id": "corr-brief-research",
+            "route": "brief",
+            "message": "What is the typical adult dose of simvastatin?",
+        }
+    )
+
+    assert "error" not in result
+    assert calls == []
+    assert RESEARCH_PROGRESS_MESSAGE not in result.get("progress_messages", [])
+    tools = {r["tool"] for r in result["tool_results"]}
+    assert RESEARCH_TOOL_NAME not in tools
+
+
+def test_meds_non_dosing_skips_research(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-dosing meds list ask → no HTTP, no Looking up label progress."""
+    calls: list[Any] = []
+
+    def _fake_fetch(*_a: Any, **_kw: Any) -> LabelFetchResult:
+        calls.append(1)
+        return LabelFetchResult(
+            ok=False, source=None, set_id=None, outcome="miss"
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    node = make_tools_node(_ok_meds_gateway())
+    result = node(
+        {
+            "pid": 6,
+            "user_id": 1,
+            "correlation_id": "corr-meds-list",
+            "route": "meds",
+            "message": "what meds is the patient on?",
+        }
+    )
+
+    assert "error" not in result
+    assert calls == []
+    assert result["progress_messages"] == ["Fetching chart…"]
+    assert RESEARCH_PROGRESS_MESSAGE not in result["progress_messages"]
+    assert all(r["tool"] != RESEARCH_TOOL_NAME for r in result["tool_results"])
+
+
+def test_meds_dosing_blocked_uncertain_skips_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Uncertain RxNorm (BLOCKED) → no HTTP, no research progress."""
+    calls: list[Any] = []
+
+    def _fake_fetch(*_a: Any, **_kw: Any) -> LabelFetchResult:
+        calls.append(1)
+        return LabelFetchResult(
+            ok=False, source=None, set_id=None, outcome="miss"
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    facts = [
+        {
+            "text": f"Lisinopril 10 mg — daily{UNCERTAIN_RXNORM_SUFFIX}",
+            "table": "prescriptions",
+            "id": "55",
+        }
+    ]
+    node = make_tools_node(_ok_meds_gateway(facts))
+    result = node(
+        {
+            "pid": 2,
+            "user_id": 1,
+            "correlation_id": "corr-blocked",
+            "route": "meds",
+            "message": "What is the typical adult dose of lisinopril?",
+        }
+    )
+
+    assert "error" not in result
+    assert calls == []
+    assert RESEARCH_PROGRESS_MESSAGE not in result.get("progress_messages", [])
+    assert all(r["tool"] != RESEARCH_TOOL_NAME for r in result["tool_results"])
+
+
+def test_meds_dosing_fetch_hit_appends_research_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dosing + resolve OK + mock hit → research_label + Looking up label."""
+    openfda_result = {
+        "openfda": {
+            "generic_name": ["SIMVASTATIN"],
+            "brand_name": ["ZOCOR"],
+            "spl_set_id": ["abc-set-id-1"],
+            "product_type": ["HUMAN PRESCRIPTION DRUG"],
+        },
+        "dosage_and_administration": [
+            "The usual dosage range is 5 to 40 mg/day."
+        ],
+    }
+
+    def _fake_fetch(query: Any, *, correlation_id: str = "") -> LabelFetchResult:
+        assert query.term.lower() == "simvastatin"
+        assert correlation_id == "corr-hit"
+        return LabelFetchResult(
+            ok=True,
+            source="openfda",
+            set_id="abc-set-id-1",
+            outcome="hit_openfda",
+            openfda_result=openfda_result,
+            generic_names=("SIMVASTATIN",),
+            brand_names=("ZOCOR",),
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    node = make_tools_node(_ok_meds_gateway())
+    result = node(
+        {
+            "pid": 6,
+            "user_id": 1,
+            "correlation_id": "corr-hit",
+            "route": "meds",
+            "message": "What is the typical adult dose of simvastatin?",
+        }
+    )
+
+    assert "error" not in result
+    assert RESEARCH_PROGRESS_MESSAGE in result["progress_messages"]
+    assert result["progress_messages"][0] == "Fetching chart…"
+    research = [r for r in result["tool_results"] if r["tool"] == RESEARCH_TOOL_NAME]
+    assert len(research) == 1
+    assert research[0]["ok"] is True
+    assert research[0]["data"]["facts"]
+    assert research[0]["data"]["meta"]["source"] == "openfda"
+    assert research[0]["data"]["meta"]["on_chart"] is True
+    chart_meds = [r for r in result["tool_results"] if r["tool"] == "meds"]
+    assert len(chart_meds) == 1
+
+
+def test_meds_dosing_fetch_raises_keeps_chart_no_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H8: fetch exception → chart meds kept; research never sets error."""
+
+    def _boom(*_a: Any, **_kw: Any) -> LabelFetchResult:
+        raise RuntimeError("simulated research failure")
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _boom)
+
+    node = make_tools_node(_ok_meds_gateway())
+    result = node(
+        {
+            "pid": 6,
+            "user_id": 1,
+            "correlation_id": "corr-raise",
+            "route": "meds",
+            "message": "What is the typical adult dose of simvastatin?",
+        }
+    )
+
+    assert "error" not in result
+    # Progress was added before HTTP; exception skips research facts only.
+    assert RESEARCH_PROGRESS_MESSAGE in result["progress_messages"]
+    tools = [r["tool"] for r in result["tool_results"]]
+    assert "meds" in tools
+    assert RESEARCH_TOOL_NAME not in tools

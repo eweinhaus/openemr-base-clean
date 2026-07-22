@@ -37,7 +37,7 @@ HTTPS self-signed on bare IP. No DB TLS / MFA on public demo (documented gaps).
 | Framework | LangGraph (Python) |
 | Observability | LangSmith (redacted) + correlation IDs + disclosure log |
 | Chart access | PHP services via gateway (pid-scoped); FHIR phase 2 |
-| Research | openFDA → DailyMed; no PHI in queries |
+| Research | openFDA → DailyMed fallback; no PHI; `sidecar/app/research/` (PRD 05 landed); optional `OPENFDA_API_KEY` |
 | Stream | Hybrid SSE (progress → verified clinical) |
 | State | Open-tab transcript until closed |
 | Deploy | Same 2 GB host; single sidecar worker |

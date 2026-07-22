@@ -37,7 +37,10 @@ DRAFT_SYSTEM_PROMPT = (
     '"locator":{"table":"...","id":"..."},"excerpt":"optional"}],'
     '"refusals":[{"code":"...","text":"..."}]}. '
     "Every claim locator must match a fact from the provided tool results. "
-    "Do not invent facts, tables, ids, or research sources. "
+    "Do not invent facts, tables, ids, research locators, URLs, or label text. "
+    "Named drugs not on the patient's active med list must not be claimed as "
+    "the patient's prescription (prescriptions table). "
+    "Use source_type research only when research_label tool facts exist. "
     "Use refusals when you cannot support a request from tool facts alone "
     "(for example dosing without a retrieved label source)."
 )

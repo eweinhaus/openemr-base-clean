@@ -44,7 +44,8 @@ Other clinical roles (nurse, ED, hospitalist) explicitly out of scope for MVP.
 
 - Never present dosing/interactions without a retrieved source
 - Research miss → cited chart facts + explicit refuse of unsupported claim (partial win OK)
-- Conflicting labels → show conflict; physician decides
+- Off-chart named drug (resolves to single Rx SPL) → research OK but **must** tell physician it is not on the active list
+- **Label conflict UX deferred for MVP** (fallback-only; architecture may add conflict later)
 - All medical claims need citations; omit > plausible guess
 - Ambiguity / labeled-unverified softening: see `docs/ai-decision-guide.md` (primary path remains cite-or-silence)
 

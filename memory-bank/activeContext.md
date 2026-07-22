@@ -2,23 +2,36 @@
 
 ## Current focus
 
-**PRD 04 chart tools shipped locally (2026-07-21):** Real PHP chart readers behind `tool_proxy` (`patient_context` · `labs` · `meds` · `notes`); stubs removed. Sidecar brief gathers all four in parallel with partial-domain failure + empty/unavailable assembly. Isolated PHPUnit ClinicalCopilot **123** + sidecar pytest **70** green. Local DB smoke pid **6** (labs/meds rich) + pid **8** (allergies).
+**PRD 05 implemented locally (2026-07-21):** `sidecar/app/research/` (openFDA → DailyMed) + verify/assemble/tools wiring. Sidecar pytest **126** green. Manual UI smoke (pid 6 simvastatin / pid 2 lisinopril) still needs a rebuilt `copilot-sidecar` image (Docker Hub builds have been flaky locally).
 
-**DO:** Previously green on stub path (2026-07-22 UTC sync). Needs **overlay + sidecar redeploy** to pick up PRD 04 (Chart PHP + renamed tools) — batch with interview prep; not a merge gate.
+**PRD 04 chart tools shipped locally:** Real PHP chart readers behind `tool_proxy`; stubs removed; brief×4 parallel.
 
-Next: **PRD 05** research (openFDA → DailyMed) **or** DO redeploy smoke on rich patient before interview.
+**DO:** Needs overlay + sidecar redeploy for PRD 04 **and** 05 (batchable). Interview talk-track needs live chart + label-backed dosing on droplet.
+
+**Next:** Recreate local sidecar → manual PRD 05 smoke; then DO redeploy 04+05; then PRD 06 citations.
+
+## PRD 05 decisions (locked — implemented)
+
+- **Happy path:** One label-backed **dosing** answer — local **pid 6 simvastatin** (RxNorm `312961` in DB; chart fact text does **not** embed RxCUI when present — query uses scrubbed generic/brand term).
+- **Uncertain identity:** local **pid 2** Lisinopril (empty RxNorm) — **no HTTP**; pid 8 is allergies + coded Rx (not missing-RxNorm).
+- **Conflict UX:** **Skipped** for MVP/demo — no dual-fetch compare, no conflict module/tests.
+- **Off-chart named drug:** Allowed if name → single Rx SPL; **assembly must** say not on active list (not prompt-only).
+- **Placement:** `sidecar/app/research/` only — **never** `tool_proxy`.
+- **Verify:** Keep `source_type=research` (no force to `chart`); `no_research` only if dosing-like **and** no verified research dosing fact.
+- **DailyMed:** Real fallback after openFDA miss/timeout/5xx/empty dose; ≤5s hard cap; no retries.
+- **Gates:** `meds` route only; dosing-like (shared `is_dosing_like`); scrubbed `DrugQuery` only; uncertain RxNorm blocks research; `/ready` does not probe FDA.
+- **Optional env:** `OPENFDA_API_KEY` on compose (dev + production).
+- **Non-goals:** interaction APIs, option lists, research on brief/labs, citation popups (06).
 
 ## PRD 04 decisions (locked — implemented)
 
 - **Tools:** `patient_context` · `labs` · `meds` · `notes` (no `*_stub`).
 - **Routes:** `brief` → all four parallel (`max_workers` 4); `labs`/`meds` → single tool.
-- **Fail-closed vs empty vs throw:** auth/bind unchanged. `facts: []` = success. One tool 5xx → partial answer + allowlisted unavailable line; all tools fail or auth → whole-turn error.
-- **Empty/unavailable copy:** sidecar `assemble_clinical` (no fake locators). Meds prefer `data.meta` `{active_med_count, allergy_count}`.
-- **Domain ownership:** context = last encounter + active problems only; labs/meds/notes own their domains.
+- **Fail-closed vs empty vs throw:** auth/bind unchanged. `facts: []` = success. One tool 5xx → partial + unavailable line.
+- **Empty/unavailable copy:** sidecar `assemble_clinical` (no fake locators). Meds `data.meta` counts.
+- **Domain ownership:** context = last encounter + problems; labs/meds/notes own domains.
 - **Active Rx:** `active=1` + open-ended `end_date`; missing RxNorm → uncertain wording.
-- **Notes:** `form_clinical_notes` only; Synthea empty OK.
-- **Impl:** `src/ClinicalCopilot/Chart/` Schedule-style (injectable loaders, **not** BaseService); `ChartToolDispatcher` → `ToolProxyService`; sidecar `tool_domain_errors`.
-- **Out of 04:** research, citation UI, LangSmith, TTL cache, note seed, FHIR-primary.
+- **Impl:** `src/ClinicalCopilot/Chart/` Schedule-style; `ChartToolDispatcher` → `ToolProxyService`.
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -62,75 +75,77 @@ Next: **PRD 05** research (openFDA → DailyMed) **or** DO redeploy smoke on ric
 - `llm_http_error` = OpenRouter HTTP status (404 bad slug, 402 no credits, etc.) — not “missing key” (`llm_not_configured`)
 - LangSmith redacted + app correlation IDs + disclosure log
 
-### Research (UC-3)
+### Research (UC-3) — PRD 05 locks (code landed)
 
-- **openFDA primary**, DailyMed fallback
-- Drug/condition terms only; no PHI
-- Dosing/interactions only from retrieved sources; else chart facts + explicit refuse
-- Label conflicts → surface both; never silently pick a winner
+- **openFDA primary**, DailyMed **fallback only** (not dual-fetch conflict)
+- Drug/condition terms only; scrubbed `DrugQuery` — never raw user message
+- Dosing only from retrieved sources; else chart + `no_research`
+- **Conflict UX deferred** (ARCHITECTURE still mentions it for later; MVP skips)
+- Off-chart named drug OK if single Rx SPL + mandatory not-on-list assembly line
+- Brand↔generic post-hit reconcile may flip `on_chart=true`
+- Optional `OPENFDA_API_KEY` on DO / compose
+- Module: `sidecar/app/research/` — dosing, scrub, resolve, client, extract, constants
 
 ### Verification / streaming / state
 
-- Structured claim→source; **cite-or-silence** on primary clinical path (no skim-able warning as verify substitute)
-- Verify emits **tool fact text** for matching locators (never model prose); refusals allowlisted (`no_research` canonical)
-- Demo softening (decision guide): separate hard-labeled **`unverified`** block OK if needed; prefer refuse when unsure; never mix into verified prose
-- **Hybrid SSE:** progress early; clinical after verify
-- **Open-tab transcript** until closed (resend/session-held); sanitized role/text only; no pre-ask cache / durable checkpointer for MVP
-- Patient switch: no silent pid continue
-- Ask Co-Pilot ACL: `patients/demo` on index + stream; tool_proxy re-checks bind **pid + user_id**
+- Structured claim→source; **cite-or-silence** on primary clinical path
+- Verify emits **tool fact text**; keep `source_type` (`research`/`note`/`chart`) — do not force chart
+- Refusals allowlisted (`no_research` canonical); dosing refuse **conditional** (dosing-like ∧ no verified research dosing fact)
+- **Hybrid SSE:** progress early; clinical after verify; research progress `Looking up label information…`
+- **Open-tab transcript** until closed; sanitized role/text only
+- Ask Co-Pilot ACL: `patients/demo`; tool_proxy re-checks bind **pid + user_id**
 
 ### UX (locked)
 
 - First-class **Ask Co-Pilot** tab; empty chat start; citation hyperlinks → in-pane popup; concise; omit > guess
-- Unbound → **blocking schedule picker popup** (not a warning bar); provider-only today schedule; explicit click to bind; Change patient clears thread after confirm
+- Unbound → **blocking schedule picker popup**; Change patient clears thread after confirm
 
 ### Demo / agent decision policy (2026-07-21)
 
 - North star: interview MVP on DO; extensible seams; few happy-path bugs; **not** production
 - Engineering guesses OK; clinical claims must be verified+cited, labeled unverified, or refused
 - Shortcuts/fakes OK if noted as Memory Bank debt; **do not** fake roadmap spine steps 1–7
-- Under pressure: keep UC-1 → UC-2; label-backed UC-3 if easy; else thin UC-3; vertical trust slice before wide skeleton
-- **Keep shipping spine locally;** batch DO deploy/flakiness fixes before interview (DO still final talk-track truth)
-- Escalation: auth/PHI/verify-bypass/chart writes/DO data loss/stack-lock changes **or** ~90s physician-story changes — see decision guide
+- Under pressure: keep UC-1 → UC-2; label-backed UC-3 if easy; else thin UC-3
+- **Keep shipping spine locally;** batch DO deploy before interview
+- Escalation: auth/PHI/verify-bypass/chart writes/DO data loss/stack-lock **or** ~90s physician-story — see decision guide
 
-### Physician UX defaults (2026-07-21, decision guide §6)
+### Physician UX defaults (decision guide §6)
 
-- **~90s budget:** design rich brief for post-cache speed; accept uncached latency now
-- **Partial tool failure:** ship verified domains + `… unavailable — try again.` (never invent filler; never whole-turn fail if anything verified)
-- **Empty domains:** explicit one-liners (`No allergies on file.` etc.) — omit ≠ “none checked”
-- **Citations:** link **every** verified claim; popup for details; conflicts = short chat + both linkable
-- **Progress:** clinical-ish (`Pulling labs…`) — no toolchain jargon
-- **UC-3:** one label-backed dosing/interaction nice if PRD 05 makes it easy
+- **~90s budget:** rich brief shape for post-cache; accept uncached latency now
+- **Partial tool failure:** verified domains + `… unavailable — try again.`
+- **Empty domains:** explicit one-liners
+- **Citations:** link every verified claim (PRD 06 popups); conflict UX deferred with research MVP
+- **Progress:** clinical-ish (`Pulling labs…` / `Looking up label information…`)
+- **UC-3:** one label-backed dosing path (PRD 05)
 
 ## Deferred (explicit in ARCHITECTURE.md)
 
-Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · interaction APIs · SMART runtime · FHIR dual path · production hardening · full eval catalog (categories reserved)
+Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · interaction APIs · SMART runtime · FHIR dual path · production hardening · full eval catalog · **label conflict UX** (deferred from PRD 05)
 
 ## Deferred debt (shortcuts)
 
-- **Brief four-tool bundle not cached yet** (planned TTL ~30–60s); first brief may be slow under 120s gateway budget.
-- **Synthea notes empty:** `form_clinical_notes` unused by CCDA import — honest empty domain; optional seed later for interview script.
-- **Draft parse under rich tools:** watch `draft_parse_failed` after four-tool gather; truncate oldest labs before draft if needed.
-- **Optional fhir_uuid** on ChartFact supported but loaders do not populate yet (PRD 06 citations).
-- **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used historically. DO/local should rebuild `copilot-sidecar` on deploy.
-- **DO overlay bind-mounts (not fork-built image):** Co-Pilot PHP under `/opt/openemr/overlay/`; needs sync for PRD 04 Chart/.
-- **DO schedule:** `CoPilot Demo%` appts need re-seed after day roll / rebuild.
-- Per-turn tool tickets (using correlation bind file store for MVP).
-- Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
-- Citation popups deferred (PRD 06).
-- Dosing refusal now keyword-gated (`dose|dosing|dosage|titrate|how much|mg/kg`) — research-backed dosing still PRD 05.
-- No rate limiting on `stream.php` (OpenRouter cost exposure) — production hardening, out of MVP scope.
-- **Dev compose still defaults** `COPILOT_INTERNAL_SECRET` to weak local value (production compose now requires env); rotate before public demo.
-- Entry-script / JS / SidecarClient automated tests still thin (verify/ACL/transcript/Chart covered in units).
-- **Picker:** recurring appts not expanded; provider-only schedule (no facility fallback).
+- **Brief four-tool bundle not cached yet** (planned TTL ~30–60s).
+- **Synthea notes empty** — honest empty; optional seed later.
+- **Draft parse under rich tools:** watch `draft_parse_failed`; truncate oldest labs if needed.
+- **Optional fhir_uuid** on ChartFact not populated yet (PRD 06).
+- **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
+- **DO overlay:** needs sync for PRD 04 Chart/ + PRD 05 sidecar recreate.
+- **DO schedule:** `CoPilot Demo%` re-seed after day roll.
+- Per-turn tool tickets; durable disclosure DB; citation popups (PRD 06).
+- **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
+- No rate limiting on `stream.php`.
+- **Dev compose** weak default `COPILOT_INTERNAL_SECRET`.
+- **Picker:** non-recurring today only; provider-scoped.
+- **Manual PRD 05 UI smoke** pending sidecar image recreate.
 
 ## Remaining / next
 
-1. DO redeploy overlay (Chart + ToolProxy) + sidecar recreate; smoke pid with labs/meds
-2. PRD 05 research tools (openFDA → DailyMed)
+1. Rebuild/recreate local `copilot-sidecar` → manual smoke pid 6 / pid 2 / off-chart amoxicillin
+2. DO redeploy PRD 04 + 05; smoke rich patient + dosing
 3. PRD 06–07 citations / LangSmith thin follow-on
 
 ## Out of scope right now
 
 - Production credential rotation, DB TLS, MFA, ATNA, chart write-back
 - Concurrent multi-physician load testing as a demo requirement
+- Label conflict surface in MVP demo

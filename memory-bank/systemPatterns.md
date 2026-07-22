@@ -74,16 +74,26 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 ## Verification pattern
 
 - Model emits structured claim/source pairs; verify node cite-or-silence
-- Chart: table+pk (± FHIR id); notes: id + span; research: URL/title/section
+- Chart: table+pk (± FHIR id); notes: id + span; research: `openfda`/`dailymed` + set_id:section (URL/title in excerpt/meta)
 - Prefer structured over notes when both exist
-- Dosing/interactions only from retrieved labels; conflicts surfaced, not auto-resolved
+- Keep claim `source_type` (`chart`|`note`|`research`) — do not rewrite survivors to `chart`
+- Dosing only from retrieved labels; `no_research` only when dosing-like and no verified research fact
 - Allergy / contradiction checks; med UX = decision support only
+- Label **conflict UX deferred** (MVP does not dual-fetch or surface conflicts)
 
-## Research pattern
+## Research pattern (PRD 05)
 
-- openFDA primary → DailyMed fallback
-- Outbound: drug/condition terms only
-- Miss: cited chart + refuse unsupported dosing claim (partial turn OK)
+- Sidecar-only (`sidecar/app/research/`) — never via `tool_proxy`
+- openFDA primary → DailyMed fallback on miss/timeout/5xx/empty dose; ≤5s; no retries
+- Outbound: scrubbed `DrugQuery` / RxCUI digits only — never raw user message or PHI
+- `meds` route + dosing-like only (`is_dosing_like` shared by tools + verify); uncertain RxNorm blocks HTTP
+- Off-chart named drug allowed if single Rx SPL; assembly not-on-list line required
+- Brand↔generic post-hit may reconcile `on_chart=true`
+- Miss: cited chart + refuse unsupported dosing (partial turn OK; not SSE `error`)
+- Verify keeps `source_type=research`; `no_research` only if dosing-like ∧ no verified research dosing fact
+- `/ready` must not probe FDA/DailyMed
+- Optional `OPENFDA_API_KEY`; chart facts omit RxCUI when present → query by scrubbed name
+- Canonical PRD: `docs/PRDs/05-research-tools.md` (H1–H17 invariants)
 
 ## Deploy pattern
 

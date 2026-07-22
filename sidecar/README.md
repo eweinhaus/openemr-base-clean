@@ -1,4 +1,4 @@
-# Copilot LangGraph sidecar (PRD 03)
+# Copilot LangGraph sidecar (PRD 03–05)
 
 FastAPI + uvicorn service running the Clinical Co-Pilot agent graph
 (refuse → route → tools → draft → verify → emit). Validates
@@ -6,11 +6,13 @@ FastAPI + uvicorn service running the Clinical Co-Pilot agent graph
 which streams hybrid SSE (`progress` → verified `clinical` → `done` | `error`).
 
 Route classification and claim drafting call OpenRouter (Haiku, temperature 0).
-Chart facts come from the OpenEMR gateway `tool_proxy.php` (stub tools until
-PRD 04). Verification is deterministic: chart claims must cite a locator
-returned by this turn's tools, and the shipped text is the tool fact prose —
-never model-authored clinical text. Refusal codes are allowlisted
-(`no_research`) and canonicalized.
+Chart facts come from the OpenEMR gateway `tool_proxy.php` (PRD 04). On
+`meds` + dosing-like turns, the tools node may append sidecar-only label
+research (openFDA → DailyMed; PRD 05) — never via `tool_proxy`. Verification
+is deterministic: claims must cite a locator from this turn's tools, and the
+shipped text is the tool fact prose. `source_type` stays `chart` / `note` /
+`research`. Canonical `no_research` is appended only when the ask is
+dosing-like and no verified research dosing fact survived.
 
 ## Layout
 
@@ -28,6 +30,7 @@ sidecar/
     llm.py             # OpenRouter Haiku route/draft helpers
     claims.py          # claim schema, parse, verify, assemble
     gateway_client.py  # HTTP client → tool_proxy.php
+    research/          # openFDA → DailyMed (PRD 05; scrubbed DrugQuery only)
     nodes/             # refuse, route, tools, draft, verify, emit
   tests/
 ```
@@ -105,6 +108,7 @@ pass the full env below).
 | `OPENROUTER_API_KEY` | empty | Required for live route/draft (missing → `/ready` false, turns error) |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base |
 | `OPENROUTER_MODEL` | `anthropic/claude-haiku-4.5` | Pinned Haiku id |
+| `OPENFDA_API_KEY` | empty | Optional openFDA key (higher rate limits); `/ready` does **not** probe FDA |
 | `COPILOT_LLM_TIMEOUT_SECONDS` | `30` | Per-LLM-call budget (route and draft each) |
 | `COPILOT_TOOL_TIMEOUT_SECONDS` | `10` | Gateway tool / probe budget |
 

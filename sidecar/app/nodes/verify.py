@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 
 from ..claims import (
     Refusal,
@@ -11,22 +10,27 @@ from ..claims import (
     filter_refusals,
     verify_claims,
 )
+from ..research import RESEARCH_TABLES, is_dosing_like
 from ..state import DOSING_REFUSAL, GraphState
 
 logger = logging.getLogger(__name__)
-
-_DOSING_PATTERN = re.compile(
-    r"\b(dose|dosing|dosage|titrat(?:e|ion)|how\s+much|mg\s*/?\s*kg)\b",
-    re.IGNORECASE,
-)
 
 _CANONICAL_REFUSALS: dict[str, Refusal] = {
     DOSING_REFUSAL.code: DOSING_REFUSAL,
 }
 
 
-def _message_looks_like_dosing(message: str) -> bool:
-    return bool(_DOSING_PATTERN.search(message))
+def _has_verified_research_dosing(verified: list) -> bool:
+    """True when a verified claim cites an openFDA/DailyMed dosage locator (H1)."""
+    for claim in verified:
+        if getattr(claim, "source_type", None) != "research":
+            continue
+        locator = getattr(claim, "locator", None)
+        if locator is None:
+            continue
+        if locator.table in RESEARCH_TABLES:
+            return True
+    return False
 
 
 def verify_node(state: GraphState) -> dict[str, object]:
@@ -54,11 +58,9 @@ def verify_node(state: GraphState) -> dict[str, object]:
         list(draft.refusals),
         canonical=_CANONICAL_REFUSALS,
     )
-    # Only append the dosing refusal when the question is actually about dosing.
-    # A plain "what meds is the patient on?" turn already carries verified Rx
-    # facts; an unconditional refusal there reads as contradictory noise.
+    # H1: append no_research only when dosing-like AND no verified research dosing fact.
     message = state.get("message", "")
-    if _message_looks_like_dosing(message):
+    if is_dosing_like(message) and not _has_verified_research_dosing(verified):
         if not any(r.code == DOSING_REFUSAL.code for r in refusals):
             refusals.append(DOSING_REFUSAL)
 

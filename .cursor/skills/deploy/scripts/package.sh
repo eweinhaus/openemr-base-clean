@@ -83,6 +83,7 @@ services:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-haiku-4.5}"
+      OPENFDA_API_KEY: "${OPENFDA_API_KEY:-}"
       COPILOT_LLM_TIMEOUT_SECONDS: "${COPILOT_LLM_TIMEOUT_SECONDS:-30}"
       COPILOT_TOOL_TIMEOUT_SECONDS: "${COPILOT_TOOL_TIMEOUT_SECONDS:-10}"
     healthcheck:
@@ -105,6 +106,7 @@ COPILOT_GATEWAY_TOOL_URL=http://openemr/interface/ask_copilot/tool_proxy.php
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL=anthropic/claude-haiku-4.5
+OPENFDA_API_KEY=
 EOF
 
 cp "$SKILL_SCRIPTS/enable-module.sql" "$STAGE/enable_ask_copilot.sql"

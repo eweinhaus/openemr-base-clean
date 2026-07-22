@@ -72,3 +72,24 @@ def test_ready_reports_ready_when_probes_succeed_with_api_key(
     assert body["gateway"]["reachable"] is True
     assert body["openrouter"]["reachable"] is True
     assert body["openrouter"]["configured"] is True
+
+
+def test_ready_does_not_probe_research_apis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H10: /ready must not call openFDA / DailyMed (or fetch_label)."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    fetch_mock = AsyncMock()
+
+    async def fake_probe(client: object, url: str, **_kwargs: object) -> dict[str, object]:
+        assert "fda.gov" not in url
+        assert "dailymed" not in url
+        return {"reachable": True, "status_code": 200}
+
+    with patch("sidecar.app.main._probe_url", new=AsyncMock(side_effect=fake_probe)):
+        with patch("sidecar.app.research.client.fetch_label", fetch_mock):
+            with TestClient(app) as client:
+                response = client.get("/ready")
+
+    assert response.status_code == 200
+    fetch_mock.assert_not_called()

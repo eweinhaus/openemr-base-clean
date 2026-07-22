@@ -215,6 +215,7 @@ def test_invented_locator_dropped_from_clinical(
 def test_dosing_question_includes_dosing_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Dosing + research miss → chart facts + canonical no_research (not SSE error)."""
     monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
     monkeypatch.setattr(
         "sidecar.app.nodes.draft.draft_claims_raw",
@@ -224,15 +225,33 @@ def test_dosing_question_includes_dosing_refusal(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
         lambda *_a, **_k: MEDS_RESULT,
     )
+    # Avoid real FDA egress; miss keeps H1 refuse path.
+    miss = MagicMock(
+        ok=False,
+        source=None,
+        set_id=None,
+        outcome="miss",
+        openfda_result=None,
+        dailymed_xml=None,
+        generic_names=(),
+        brand_names=(),
+    )
+    monkeypatch.setattr(
+        "sidecar.app.nodes.tools.fetch_label",
+        lambda *_a, **_k: miss,
+    )
 
     events = _stream_chat(
         monkeypatch,
         _chat_payload(message="What dose of metformin should I titrate to?"),
     )
     clinical = next(data for name, data in events if name == "clinical")
+    event_names = [name for name, _ in events]
 
     assert "Metformin 500 mg" in clinical["text"]
     assert DOSING_REFUSAL_TEXT in clinical["text"]
+    assert "error" not in event_names
+    assert "done" in event_names
 
 
 def test_med_list_question_has_no_dosing_refusal(
@@ -257,6 +276,103 @@ def test_med_list_question_has_no_dosing_refusal(
 
     assert "Metformin 500 mg" in clinical["text"]
     assert DOSING_REFUSAL_TEXT not in clinical["text"]
+
+
+def test_dosing_research_hit_omits_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Meds + mock research hit → label text in clinical; no_research absent."""
+    from sidecar.app.research import LabelFetchResult
+
+    set_id = "abc-set-id-1"
+    fact_id = f"{set_id}:dosage_and_administration"
+    openfda_result = {
+        "openfda": {
+            "generic_name": ["METFORMIN"],
+            "brand_name": ["GLUCOPHAGE"],
+            "spl_set_id": [set_id],
+            "product_type": ["HUMAN PRESCRIPTION DRUG"],
+        },
+        "dosage_and_administration": [
+            "Usual adult dose is 500 mg twice daily with meals."
+        ],
+    }
+    research_draft = json.dumps(
+        {
+            "claims": [
+                {
+                    "text": "Metformin 500 mg tablet — take one twice daily with meals",
+                    "source_type": "chart",
+                    "locator": {"table": "prescriptions", "id": "201"},
+                },
+                {
+                    "text": "model label prose",
+                    "source_type": "research",
+                    "locator": {"table": "openfda", "id": fact_id},
+                },
+            ],
+            "refusals": [],
+        }
+    )
+
+    def _fake_fetch(query: Any, *, correlation_id: str = "") -> LabelFetchResult:
+        return LabelFetchResult(
+            ok=True,
+            source="openfda",
+            set_id=set_id,
+            outcome="hit_openfda",
+            openfda_result=openfda_result,
+            generic_names=("METFORMIN",),
+            brand_names=("GLUCOPHAGE",),
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: research_draft,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: MEDS_RESULT,
+    )
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What is the typical adult dose of metformin?"),
+    )
+    clinical = next(data for name, data in events if name == "clinical")
+    progress = [data["message"] for name, data in events if name == "progress"]
+
+    assert "Usual adult dose is 500 mg twice daily" in clinical["text"]
+    assert DOSING_REFUSAL_TEXT not in clinical["text"]
+    assert any("Looking up label information" in p for p in progress)
+
+
+def test_brief_route_never_looks_up_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H11: brief never invokes research even if message is dosing-like."""
+    fetch_mock = MagicMock()
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "brief")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_MEDS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: MEDS_RESULT,
+    )
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", fetch_mock)
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What is the typical adult dose of metformin?"),
+    )
+    progress = [data["message"] for name, data in events if name == "progress"]
+
+    fetch_mock.assert_not_called()
+    assert not any("Looking up label information" in p for p in progress)
 
 
 def test_oversized_message_yields_error_sse(
