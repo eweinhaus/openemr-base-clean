@@ -2,11 +2,9 @@
 
 ## Current focus
 
-**PRD 07 coded locally (2026-07-22):** Observability spine — env-gated redacted LangSmith; soft `/ready.langsmith`; fail-closed `sidecar_unready`; secret-gated `disclosure.php` + sidecar best-effort `verify` callback. Automated: sidecar pytest **157**; isolated PHPUnit disclosure/stream-error **29**.
+**PRD 07 on DO (2026-07-22):** Commit `517f95a` pushed + redeployed to https://142.93.255.212/. Overlay `disclosure.php` + `VerifyDisclosureService`; sidecar rebuild (langsmith pin, soft `/ready.langsmith`, fail-closed `sidecar_unready`). Bind-seeded pid **6** dosing SSE → progress → clinical → citation → done; disclosure JSONL includes `tool_proxy` + **`verify`** (`pass:true`,`reason:ok`) same `correlation_id`. Module active; OpenRouter **set**; LangSmith keys **optional/empty** (chat OK; soft field `configured:false`). Login redirect 302.
 
-**PRD 06 still on DO** (`58eb115`): citations SSE verified; Ask Co-Pilot Source click-path optional.
-
-**Next:** DO redeploy overlay (`disclosure.php` + Gateway services) + sidecar rebuild (optional `LANGSMITH_*`); optional Source click-path smoke; Early narrative / eval thin.
+**Next:** Optional Ask Co-Pilot Source click-path smoke; Early narrative / eval thin / demo video.
 
 ## PRD 07 decisions (locked — implemented)
 
@@ -157,7 +155,7 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **`fhir_uuid` / `retrieved_at` on citations** — omitted/null in PRD 06; populate later.
 - **Historical transcript citation re-hydrate** — MVP OK to show plain prior turns.
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
-- **DO overlay:** PRD 06 on droplet; **PRD 07 local only** until `disclosure.php` + Gateway + sidecar redeploy.
+- **DO overlay:** PRD 07 on droplet (`517f95a`) — disclosure + Gateway + sidecar observability.
 - **DO schedule:** `CoPilot Demo%` re-seed after day roll.
 - Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07); gateway `/ready` preflight deferred; optional `wrap_openai` deferred; wired alerts deferred.
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
@@ -169,9 +167,9 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Remaining / next
 
-1. DO redeploy PRD 07 (overlay + sidecar; optional LangSmith keys)
-2. Optional Ask Co-Pilot Source popup click-path smoke on DO
-3. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
+1. Optional Ask Co-Pilot Source popup click-path smoke on DO
+2. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
+3. Optional enable LangSmith keys on DO for redacted-trace screenshot (join story already works via disclosure JSONL)
 
 ## Out of scope right now
 
