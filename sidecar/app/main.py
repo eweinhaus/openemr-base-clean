@@ -14,33 +14,49 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .auth import SECRET_HEADER, verify_secret
-from .gateway_client import GatewayClient
+from .errors import ERROR_SIDECAR_UNREADY, sse_error_payload
+from .gateway_client import (
+    DEFAULT_GATEWAY_DISCLOSURE_URL,
+    GatewayClient,
+    derive_disclosure_url,
+)
 from .sse import format_sse
 from .stream import iter_chat_events
+from .tracing import apply_hide_io_policy, langsmith_api_key, probe_langsmith
 
 DEFAULT_GATEWAY_TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
+DEFAULT_LANGSMITH_PROJECT = "openemr-copilot-demo"
 
 
 @dataclass(frozen=True)
 class Settings:
     internal_secret: str
     gateway_tool_url: str
+    gateway_disclosure_url: str
     openrouter_api_key: str
     openrouter_base_url: str
     openrouter_model: str
     llm_timeout_seconds: float
     tool_timeout_seconds: float
+    langsmith_api_key: str
+    langsmith_tracing: bool
+    langsmith_project: str
 
 
 def load_settings() -> Settings:
     secret = os.environ.get("COPILOT_INTERNAL_SECRET", "")
+    tracing_raw = os.environ.get("LANGSMITH_TRACING", "").strip().lower()
+    tool_url = os.environ.get("COPILOT_GATEWAY_TOOL_URL", DEFAULT_GATEWAY_TOOL_URL)
+    disclosure_raw = os.environ.get("COPILOT_GATEWAY_DISCLOSURE_URL", "").strip()
+    disclosure_url = disclosure_raw or derive_disclosure_url(tool_url)
+    if not disclosure_url:
+        disclosure_url = DEFAULT_GATEWAY_DISCLOSURE_URL
     return Settings(
         internal_secret=secret,
-        gateway_tool_url=os.environ.get(
-            "COPILOT_GATEWAY_TOOL_URL", DEFAULT_GATEWAY_TOOL_URL
-        ),
+        gateway_tool_url=tool_url,
+        gateway_disclosure_url=disclosure_url,
         openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", ""),
         openrouter_base_url=os.environ.get(
             "OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL
@@ -51,6 +67,11 @@ def load_settings() -> Settings:
         ),
         tool_timeout_seconds=float(
             os.environ.get("COPILOT_TOOL_TIMEOUT_SECONDS", "10")
+        ),
+        langsmith_api_key=langsmith_api_key(),
+        langsmith_tracing=tracing_raw in ("1", "true", "yes", "on"),
+        langsmith_project=os.environ.get(
+            "LANGSMITH_PROJECT", DEFAULT_LANGSMITH_PROJECT
         ),
     )
 
@@ -80,6 +101,8 @@ def _require_secret_at_startup() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _require_secret_at_startup()
+    # When tracing is on, force hide I/O so GraphState PHI never leaves the box.
+    apply_hide_io_policy()
     yield
 
 
@@ -112,6 +135,7 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
     timeout = httpx.Timeout(settings.tool_timeout_seconds)
     gateway: Dict[str, Any]
     openrouter: Dict[str, Any]
+    langsmith: Dict[str, Any]
 
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         gateway = await _probe_url(
@@ -131,11 +155,17 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
             headers=openrouter_headers or None,
         )
 
+        # Soft field only — never alone flips ready=false; never probes FDA.
+        langsmith = await probe_langsmith(
+            client, api_key=settings.langsmith_api_key
+        )
+
     openrouter["configured"] = bool(settings.openrouter_api_key)
     # A missing OpenRouter key means clinical turns will fail — report unready
     # so a health probe catches the misconfiguration instead of masking it.
     # H10 (PRD 05): do not probe openFDA / DailyMed here — research is
     # best-effort at tool time and must not gate readiness.
+    # H3 (PRD 07): LangSmith is soft — missing/unreachable does not set ready=false.
     ready = (
         gateway.get("reachable") is True
         and bool(settings.openrouter_api_key)
@@ -145,6 +175,7 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
         "ready": ready,
         "gateway": gateway,
         "openrouter": openrouter,
+        "langsmith": langsmith,
         "openrouter_model": settings.openrouter_model,
     }
 
@@ -162,6 +193,7 @@ def _chat_event_iterator(
         secret=settings.internal_secret,
         tool_url=settings.gateway_tool_url,
         timeout=settings.tool_timeout_seconds,
+        disclosure_url=settings.gateway_disclosure_url,
     )
     for event_name, payload in iter_chat_events(
         gateway=gateway,
@@ -172,6 +204,14 @@ def _chat_event_iterator(
         transcript=transcript,
     ):
         yield format_sse(event_name, payload)
+
+
+def _unready_event_iterator(*, correlation_id: str) -> Iterator[str]:
+    """Fail-closed SSE: one error frame, no graph / LLM / clinical."""
+    yield format_sse(
+        "error",
+        sse_error_payload(ERROR_SIDECAR_UNREADY, correlation_id=correlation_id),
+    )
 
 
 @app.get("/health")
@@ -199,6 +239,17 @@ async def chat(
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
     correlation_id = body.correlation_id or x_correlation_id or ""
+
+    readiness = await check_readiness(settings)
+    if not readiness.get("ready"):
+        return StreamingResponse(
+            _unready_event_iterator(correlation_id=correlation_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "close",
+            },
+        )
 
     return StreamingResponse(
         _chat_event_iterator(

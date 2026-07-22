@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+from unittest.mock import MagicMock
+
 from sidecar.app.claims import (
     Claim,
     DraftClaims,
@@ -589,3 +592,149 @@ def test_verify_node_non_dosing_skips_refusal() -> None:
     out = verify_node(state)
 
     assert all(r.code != DOSING_REFUSAL.code for r in out["refusals"])
+
+
+def _verify_state_with_matching_claim() -> dict[str, Any]:
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Creatinine 1.4",
+                source_type="chart",
+                locator=Locator(table="procedure_result", id="42"),
+            )
+        ],
+        refusals=[],
+    )
+    return {
+        "message": "Show labs",
+        "correlation_id": "corr-disc-ok",
+        "draft_claims": draft,
+        "tool_results": _tool_results_with_fact(
+            "procedure_result", "42", "Creatinine 1.4 mg/dL"
+        ),
+    }
+
+
+def test_verify_node_callback_pass_ok_when_verified() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    gateway.post_verify_disclosure.return_value = True
+    node = make_verify_node(gateway)
+
+    out = node(_verify_state_with_matching_claim())
+
+    assert len(out["verified_claims"]) == 1
+    assert "error" not in out
+    gateway.post_verify_disclosure.assert_called_once_with(
+        correlation_id="corr-disc-ok",
+        passed=True,
+        reason="ok",
+    )
+
+
+def test_verify_node_callback_claims_dropped() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Invented",
+                source_type="chart",
+                locator=Locator(table="procedure_result", id="999"),
+            )
+        ],
+        refusals=[],
+    )
+    state = {
+        "message": "Show labs",
+        "correlation_id": "corr-disc-drop",
+        "draft_claims": draft,
+        "tool_results": _tool_results_with_fact("procedure_result", "42"),
+    }
+    node = make_verify_node(gateway)
+
+    out = node(state)
+
+    assert out["verified_claims"] == []
+    gateway.post_verify_disclosure.assert_called_once_with(
+        correlation_id="corr-disc-drop",
+        passed=False,
+        reason="claims_dropped",
+    )
+
+
+def test_verify_node_callback_all_refused() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    draft = DraftClaims(
+        claims=[],
+        refusals=[Refusal(code="no_research", text=DOSING_REFUSAL_TEXT)],
+    )
+    state = {
+        "message": "What dose of amoxicillin?",
+        "correlation_id": "corr-disc-refuse",
+        "draft_claims": draft,
+        "tool_results": [],
+    }
+    node = make_verify_node(gateway)
+
+    out = node(state)
+
+    assert out["verified_claims"] == []
+    gateway.post_verify_disclosure.assert_called_once_with(
+        correlation_id="corr-disc-refuse",
+        passed=False,
+        reason="all_refused",
+    )
+
+
+def test_verify_node_callback_empty_verified() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    draft = DraftClaims(claims=[], refusals=[])
+    state = {
+        "message": "Show labs",
+        "correlation_id": "corr-disc-empty",
+        "draft_claims": draft,
+        "tool_results": [],
+    }
+    node = make_verify_node(gateway)
+
+    out = node(state)
+
+    assert out["verified_claims"] == []
+    gateway.post_verify_disclosure.assert_called_once_with(
+        correlation_id="corr-disc-empty",
+        passed=False,
+        reason="empty_verified",
+    )
+
+
+def test_verify_node_skips_callback_when_draft_none() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    node = make_verify_node(gateway)
+
+    out = node({"correlation_id": "corr-skip", "draft_claims": None})
+
+    assert out == {}
+    gateway.post_verify_disclosure.assert_not_called()
+
+
+def test_verify_node_callback_exception_does_not_set_error() -> None:
+    from sidecar.app.nodes.verify import make_verify_node
+
+    gateway = MagicMock()
+    gateway.post_verify_disclosure.side_effect = RuntimeError("boom")
+    node = make_verify_node(gateway)
+
+    out = node(_verify_state_with_matching_claim())
+
+    assert len(out["verified_claims"]) == 1
+    assert "error" not in out
+    gateway.post_verify_disclosure.assert_called_once()

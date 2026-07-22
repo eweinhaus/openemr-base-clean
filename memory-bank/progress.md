@@ -33,11 +33,12 @@
 - [x] **PRD 06 written (2026-07-22):** `docs/PRDs/06-citations-hybrid-sse.md` — segments + batch `citation` SSE, trailing Source, in-pane popup, H1–H13.
 - [x] **PRD 06 citations + hybrid SSE (2026-07-22):** `build_clinical_payload` / `build_citation_records`; emit/stream `clinical`→`citation`→`done`; progress polish; Ask Co-Pilot Source + `#acp-cite` dialog + URL allowlist; sidecar pytest **137**; Jest ask-copilot **31**.
 - [x] **DO redeploy PRD 06 (2026-07-22):** commit `58eb115`; overlay+sidecar; module active; OpenRouter set; bind-seeded pid 6 dosing → progress → clinical+segments → research citation → done.
+- [x] **PRD 07 written + coded (2026-07-22):** LangSmith env-gated + force hide; soft `/ready.langsmith`; `sidecar_unready` fail-closed; `disclosure.php` + `VerifyDisclosureService`; verify callback; alert stubs in README; sidecar pytest **157**; isolated PHPUnit disclosure **29**.
 
 ## Remaining (MVP → Early)
 
+- [ ] DO redeploy PRD 07 (overlay `disclosure.php` + Gateway; sidecar rebuild; optional `LANGSMITH_*`)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
-- [ ] Write + implement PRD 07 (LangSmith redacted stubs; polish `/health`/`/ready`; join disclosure log on correlation ID — thin OK)
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] Eval suite thin + demo video / cost analysis — interview narrative prioritized
 
@@ -61,7 +62,8 @@
 - **Uncached four-tool brief** may be slow; TTL cache deferred; watch `draft_parse_failed` under richer tool JSON
 - **DO `OPENFDA_API_KEY` empty** — optional; unauthenticated openFDA worked for smoke
 - **PRD 06 on DO** — SSE citation path verified; Ask Co-Pilot Source click-path optional
-- **PRD 07 not written** — `/health`/`/ready` + disclosure stub exist; LangSmith wiring still TODO
+- **PRD 07 coded locally** — not on DO until overlay+sidecar redeploy; LangSmith keys optional (chat works without)
+- Deferred after 07: gateway `/ready` preflight; durable disclosure DB; optional `wrap_openai`; wired alerts
 
 ## Schedule reminder (from directions)
 

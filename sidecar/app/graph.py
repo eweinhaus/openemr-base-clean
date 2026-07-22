@@ -12,7 +12,7 @@ from .nodes.emit import emit_node
 from .nodes.refuse import refuse_node
 from .nodes.route import route_node
 from .nodes.tools import make_tools_node
-from .nodes.verify import verify_node
+from .nodes.verify import make_verify_node
 from .state import GraphState
 
 AfterRefuse = Literal["route", "emit"]
@@ -53,7 +53,7 @@ def build_graph(gateway: GatewayClient):
     graph.add_node("route", route_node)
     graph.add_node("tools", make_tools_node(gateway))
     graph.add_node("draft", draft_node)
-    graph.add_node("verify", verify_node)
+    graph.add_node("verify", make_verify_node(gateway))
     graph.add_node("emit", emit_node)
 
     graph.add_edge(START, "refuse")

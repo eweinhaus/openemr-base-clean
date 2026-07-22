@@ -209,12 +209,18 @@ services:
     environment:
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
       COPILOT_GATEWAY_TOOL_URL: "${COPILOT_GATEWAY_TOOL_URL:-http://openemr/interface/ask_copilot/tool_proxy.php}"
+      COPILOT_GATEWAY_DISCLOSURE_URL: "${COPILOT_GATEWAY_DISCLOSURE_URL:-http://openemr/interface/ask_copilot/disclosure.php}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-anthropic/claude-haiku-4.5}"
       OPENFDA_API_KEY: "${OPENFDA_API_KEY:-}"
       COPILOT_LLM_TIMEOUT_SECONDS: "${COPILOT_LLM_TIMEOUT_SECONDS:-30}"
       COPILOT_TOOL_TIMEOUT_SECONDS: "${COPILOT_TOOL_TIMEOUT_SECONDS:-10}"
+      LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
+      LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
+      LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-openemr-copilot-demo}"
+      LANGSMITH_HIDE_INPUTS: "true"
+      LANGSMITH_HIDE_OUTPUTS: "true"
     # Intentionally no ports: mapping — browser must never reach the sidecar.
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]

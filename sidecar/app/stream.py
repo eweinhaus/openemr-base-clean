@@ -14,6 +14,14 @@ from .state import GraphState
 logger = logging.getLogger(__name__)
 
 
+def build_stream_config(correlation_id: str) -> dict[str, Any]:
+    """RunnableConfig for graph.stream — correlation join only (no pid / message)."""
+    return {
+        "metadata": {"correlation_id": correlation_id},
+        "tags": ["clinical-copilot"],
+    }
+
+
 def build_initial_state(
     *,
     correlation_id: str,
@@ -69,8 +77,9 @@ def iter_chat_events(
         )
 
         final_state: GraphState = dict(initial)
+        config = build_stream_config(correlation_id)
 
-        for update in graph.stream(initial, stream_mode="updates"):
+        for update in graph.stream(initial, config=config, stream_mode="updates"):
             for _node_name, node_update in update.items():
                 if not isinstance(node_update, dict):
                     continue

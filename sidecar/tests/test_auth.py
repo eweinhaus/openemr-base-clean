@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
@@ -24,6 +25,17 @@ def _chat_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
+async def _fake_ready(settings: object) -> dict[str, object]:
+    model = getattr(settings, "openrouter_model", "anthropic/claude-haiku-4.5")
+    return {
+        "ready": True,
+        "gateway": {"reachable": True},
+        "openrouter": {"configured": True, "reachable": True},
+        "langsmith": {"configured": False, "reachable": False},
+        "openrouter_model": model,
+    }
+
+
 def test_chat_rejects_missing_secret() -> None:
     with TestClient(app) as client:
         response = client.post("/v1/chat", json=_chat_payload())
@@ -44,7 +56,10 @@ def test_chat_rejects_wrong_secret() -> None:
     assert response.json() == {"error": "unauthorized"}
 
 
-def test_chat_refuses_unbound_pid_without_placeholder_clinical() -> None:
+def test_chat_refuses_unbound_pid_without_placeholder_clinical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sidecar.app.main.check_readiness", _fake_ready)
     headers = {
         SECRET_HEADER: TEST_SECRET,
         CORRELATION_HEADER: "corr-123",

@@ -113,12 +113,15 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - `fhir_uuid`/`retrieved_at` deferred null; historical transcript re-hydrate deferred
 - Canonical PRD: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13)
 
-## Observability pattern (PRD 07 — planned thin)
+## Observability pattern (PRD 07 — implemented thin)
 
-- **LangGraph** = agent workflow; **LangSmith** = redacted traces (not interchangeable)
-- App owns `correlation_id` + PHI disclosure/verification log (JSONL stub OK; durable DB deferred)
-- `/health` alive; `/ready` = gateway + OpenRouter (never probe FDA); unready → fail closed on agent path
-- Stubs OK for interview — no LangSmith dashboard polish required
+- **LangGraph** = agent workflow; **LangSmith** = optional redacted traces (not interchangeable)
+- Env-gated `LANGSMITH_*`; startup forces hide inputs/outputs when tracing on; run metadata = `correlation_id` only (no `pid`/message)
+- Soft `/ready.langsmith` (`configured`/`reachable`); hard `ready` = gateway + OpenRouter only; **never FDA**; Compose healthcheck stays on `/health`
+- Unready → SSE `sidecar_unready` immediately (no graph/LLM/clinical)
+- App owns disclosure JSONL: `ask_start` / `tool_proxy` / **`verify`** via secret-gated `disclosure.php` (`VerifyDisclosureService`); sidecar best-effort POST after verify
+- Alert defs stubbed in markdown only — no dashboard polish / wired paging
+- Canonical PRD: `docs/PRDs/07-observability-langsmith.md` (H1–H13)
 
 ## Deploy pattern
 

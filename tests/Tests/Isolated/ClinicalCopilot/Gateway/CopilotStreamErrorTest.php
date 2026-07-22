@@ -70,4 +70,18 @@ class CopilotStreamErrorTest extends TestCase
 
         self::assertStringContainsString('503', $message);
     }
+
+    public function testMessageForSidecarUnreadyIsNonTechnical(): void
+    {
+        $payload = CopilotStreamError::payload('sidecar_unready', 'corr-unready');
+
+        self::assertSame('sidecar_unready', $payload['code']);
+        self::assertSame('corr-unready', $payload['correlation_id']);
+        self::assertSame(
+            'Co-Pilot is temporarily unavailable. Try again.',
+            $payload['message']
+        );
+        self::assertStringNotContainsString('OpenRouter', $payload['message']);
+        self::assertStringNotContainsString('LangSmith', $payload['message']);
+    }
 }

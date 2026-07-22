@@ -69,6 +69,7 @@ final class CopilotStreamError
             $code === 'sidecar_unreachable' => 'Could not reach the Co-Pilot sidecar.',
             $code === 'sidecar_timeout' => 'Co-Pilot sidecar timed out. Try again.',
             $code === 'sidecar_request_failed' => 'Co-Pilot sidecar request failed. Try again.',
+            $code === 'sidecar_unready' => 'Co-Pilot is temporarily unavailable. Try again.',
             str_starts_with($code, 'sidecar_http_') => 'Co-Pilot sidecar returned HTTP '
                 . substr($code, strlen('sidecar_http_')) . '.',
             $code === 'access_denied' => 'Access denied.',

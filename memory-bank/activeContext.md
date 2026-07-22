@@ -2,9 +2,23 @@
 
 ## Current focus
 
-**PRD 06 on DO (2026-07-22):** Commit `58eb115` pushed + redeployed to https://142.93.255.212/. Overlay cite UI + sidecar rebuild. Bind-seeded pid **6** dosing SSE → progress (`Pulling chart…` / `Checking medications…` / `Looking up label information…`) → `clinical`+`segments` → `citation` (research `source_type`, DailyMed url) → `done`. Module active; OpenRouter **set**. Login HTTP 200.
+**PRD 07 coded locally (2026-07-22):** Observability spine — env-gated redacted LangSmith; soft `/ready.langsmith`; fail-closed `sidecar_unready`; secret-gated `disclosure.php` + sidecar best-effort `verify` callback. Automated: sidecar pytest **157**; isolated PHPUnit disclosure/stream-error **29**.
 
-**Next:** Optional Ask Co-Pilot click-path UI smoke (Source popup); then PRD 07 (LangSmith thin).
+**PRD 06 still on DO** (`58eb115`): citations SSE verified; Ask Co-Pilot Source click-path optional.
+
+**Next:** DO redeploy overlay (`disclosure.php` + Gateway services) + sidecar rebuild (optional `LANGSMITH_*`); optional Source click-path smoke; Early narrative / eval thin.
+
+## PRD 07 decisions (locked — implemented)
+
+Canonical: `docs/PRDs/07-observability-langsmith.md` (H1–H13).
+
+- **LangSmith:** Optional keys; silent disable; force hide I/O when tracing on; metadata `correlation_id` only (no `pid`/message); no `wrap_openai` for MVP.
+- **`/ready`:** Soft `langsmith` field; hard deps = gateway + OpenRouter; never FDA; Compose healthcheck stays on `/health`.
+- **Fail-closed:** Sidecar `/v1/chat` gates on ready → SSE `sidecar_unready` (no graph).
+- **Disclosure join:** Sidecar → `disclosure.php` → `VerifyDisclosureService` → JSONL `event=verify` (`pass` + short `reason`); best-effort.
+- **Pass heuristic:** `pass:true` iff ≥1 verified claim; else `claims_dropped` / `all_refused` / `empty_verified`.
+- **Alerts:** Markdown stubs only (README + PRD §10) — not wired.
+- **Interview line:** Same `correlation_id` joins disclosure JSONL ↔ redacted LangSmith; app owns EHR audit.
 
 ## PRD 06 decisions (locked — implemented)
 
@@ -20,28 +34,7 @@ Canonical: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13).
 - **Builders:** `build_clinical_payload` + `build_citation_records` in `sidecar/app/claims.py`; emit/stream wire state `clinical_segments` / `citations`.
 - **Progress:** `Pulling chart…` / `Pulling labs…` / `Checking medications…`; keep `Looking up label information…`; drop `Routing…` / `Fetching chart…`.
 - **Gateway:** Pass-through only — citations built in sidecar from verified claims.
-- **Non-goals still out:** conflict UX, LangSmith (07), unverified UI, historical transcript re-hydrate, required `fhir_uuid`/`retrieved_at`.
-
-## PRD 07 planning notes (for next PRD write — not started)
-
-Guide defaults (`docs/ai-decision-guide.md` §11): redacted LangSmith traces; correlation ID joins app disclosure log; `/ready` false → fail closed on agent path + short non-technical UI error; **stubs OK** — no LangSmith dashboard polish for interview.
-
-**Already partly present (do not rebuild from scratch):**
-
-- Sidecar `GET /health` (alive) + `GET /ready` (gateway + OpenRouter; **must not** probe FDA — PRD 05 H10).
-- Gateway mints **correlation ID**; disclosure log **stub** (JSONL file) from PRD 02.
-- SSE `error` codes (`llm_not_configured`, `llm_http_error`, etc.) already surface in UI.
-
-**Likely PRD 07 scope (thin):**
-
-1. Wire **LangSmith** on sidecar (env keys) with **redaction** — no note bodies / identifiers in traces; join on `correlation_id`.
-2. Confirm `/health` + `/ready` behavior on DO + local; document fail-closed when unready.
-3. Optional: richer disclosure/verification log lines keyed by correlation ID (still file stub OK — durable DB deferred).
-4. Interview talk track: LangGraph ≠ LangSmith; app owns disclosure log + correlation IDs.
-
-**Keep out of PRD 07:** citation UI (06 done), conflict UX, multi-worker, durable checkpointer, eval catalog polish, production HA.
-
-**Builder teaching note:** Contrast Graph (workflow) vs Smith (traces) explicitly — weak mental model today.
+- **Non-goals still out:** conflict UX, unverified UI, historical transcript re-hydrate, required `fhir_uuid`/`retrieved_at`.
 
 ## PRD 05 decisions (locked — implemented)
 
@@ -164,9 +157,9 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **`fhir_uuid` / `retrieved_at` on citations** — omitted/null in PRD 06; populate later.
 - **Historical transcript citation re-hydrate** — MVP OK to show plain prior turns.
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
-- **DO overlay:** synced for PRD 06 citations (2026-07-22) — JS/CSS + sidecar.
+- **DO overlay:** PRD 06 on droplet; **PRD 07 local only** until `disclosure.php` + Gateway + sidecar redeploy.
 - **DO schedule:** `CoPilot Demo%` re-seed after day roll.
-- Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07).
+- Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07); gateway `/ready` preflight deferred; optional `wrap_openai` deferred; wired alerts deferred.
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
 - No rate limiting on `stream.php`.
 - **Dev compose** weak default `COPILOT_INTERNAL_SECRET`.
@@ -176,8 +169,8 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Remaining / next
 
-1. Optional Ask Co-Pilot Source popup click-path smoke on DO
-2. Write + implement PRD 07 (LangSmith redacted stubs + health/ready polish)
+1. DO redeploy PRD 07 (overlay + sidecar; optional LangSmith keys)
+2. Optional Ask Co-Pilot Source popup click-path smoke on DO
 3. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
 
 ## Out of scope right now
@@ -185,3 +178,4 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - Production credential rotation, DB TLS, MFA, WAF, chart write-back
 - Concurrent multi-physician load testing as a demo requirement
 - Label conflict surface in MVP demo
+- LangSmith dashboard polish / wired alerts / Bruno load-test deliverables

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 from ..claims import (
+    DraftClaims,
     Refusal,
     build_tool_fact_map,
     filter_refusals,
     verify_claims,
 )
+from ..gateway_client import GatewayClient
 from ..research import RESEARCH_TABLES, is_dosing_like
 from ..state import DOSING_REFUSAL, GraphState
 
@@ -33,7 +36,26 @@ def _has_verified_research_dosing(verified: list) -> bool:
     return False
 
 
-def verify_node(state: GraphState) -> dict[str, object]:
+def disclosure_pass_reason(
+    verified: list,
+    draft: DraftClaims,
+    refusals: list[Refusal],
+) -> tuple[bool, str]:
+    """Map verify outcome to disclosure pass + short allowlisted reason code."""
+    if len(verified) > 0:
+        return True, "ok"
+    dropped = len(draft.claims) - len(verified)
+    if dropped > 0:
+        return False, "claims_dropped"
+    if refusals and not draft.claims:
+        return False, "all_refused"
+    return False, "empty_verified"
+
+
+def _run_verify(
+    state: GraphState,
+    gateway: GatewayClient | None,
+) -> dict[str, object]:
     draft = state.get("draft_claims")
     tool_results = state.get("tool_results") or []
     correlation_id = state.get("correlation_id", "")
@@ -64,7 +86,39 @@ def verify_node(state: GraphState) -> dict[str, object]:
         if not any(r.code == DOSING_REFUSAL.code for r in refusals):
             refusals.append(DOSING_REFUSAL)
 
+    if gateway is not None:
+        passed, reason = disclosure_pass_reason(verified, draft, refusals)
+        try:
+            gateway.post_verify_disclosure(
+                correlation_id=correlation_id,
+                passed=passed,
+                reason=reason,
+            )
+        except Exception:
+            # Best-effort: never fail the clinical turn on disclosure errors.
+            logger.warning(
+                "verify disclosure callback failed",
+                extra={"correlation_id": correlation_id},
+                exc_info=True,
+            )
+
     return {
         "verified_claims": verified,
         "refusals": refusals,
     }
+
+
+def make_verify_node(
+    gateway: GatewayClient,
+) -> Callable[[GraphState], dict[str, object]]:
+    """Build a verify node that POSTs a best-effort disclosure callback."""
+
+    def verify_node(state: GraphState) -> dict[str, object]:
+        return _run_verify(state, gateway)
+
+    return verify_node
+
+
+def verify_node(state: GraphState) -> dict[str, object]:
+    """Verify without disclosure callback (unit tests / no gateway)."""
+    return _run_verify(state, None)

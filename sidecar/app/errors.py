@@ -19,6 +19,7 @@ ERROR_GATEWAY_TIMEOUT = "gateway_timeout"
 ERROR_GATEWAY_UNREACHABLE = "gateway_unreachable"
 ERROR_GATEWAY_SERVER = "gateway_server"
 ERROR_GATEWAY_TOOL = "gateway_tool_error"
+ERROR_SIDECAR_UNREADY = "sidecar_unready"
 ERROR_UNEXPECTED = "unexpected"
 
 # Human-readable messages keyed by code. Keep free of stack traces and PHI.
@@ -37,6 +38,7 @@ _MESSAGES: dict[str, str] = {
     ERROR_GATEWAY_UNREACHABLE: "Could not reach the chart tool proxy.",
     ERROR_GATEWAY_SERVER: "Chart tool proxy returned a server error.",
     ERROR_GATEWAY_TOOL: "Chart tool request failed. Try again.",
+    ERROR_SIDECAR_UNREADY: "Co-Pilot is temporarily unavailable. Try again.",
     ERROR_UNEXPECTED: GENERIC_ERROR_MESSAGE,
 }
 

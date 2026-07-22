@@ -137,4 +137,100 @@ class DisclosureLogTest extends TestCase
         $this->assertTrue($decoded['pass']);
         $this->assertSame('ok', $decoded['reason']);
     }
+
+    public function testWriteVerifyEventWithPassAndReason(): void
+    {
+        $logPath = $this->tempDir . '/disclosure.jsonl';
+        $log = new DisclosureLog($logPath);
+
+        $log->write([
+            'correlation_id' => 'cid-verify-1',
+            'event' => 'verify',
+            'pass' => true,
+            'reason' => 'ok',
+        ]);
+
+        $decoded = json_decode((string) file_get_contents($logPath), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('verify', $decoded['event']);
+        $this->assertSame('cid-verify-1', $decoded['correlation_id']);
+        $this->assertTrue($decoded['pass']);
+        $this->assertSame('ok', $decoded['reason']);
+        $this->assertArrayHasKey('ts', $decoded);
+    }
+
+    public function testWriteVerifyEventWithPassFalseAndShortReason(): void
+    {
+        $logPath = $this->tempDir . '/disclosure.jsonl';
+        $log = new DisclosureLog($logPath);
+
+        $log->write([
+            'correlation_id' => 'cid-verify-2',
+            'event' => 'verify',
+            'pass' => false,
+            'reason' => 'empty_verified',
+        ]);
+
+        $decoded = json_decode((string) file_get_contents($logPath), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('verify', $decoded['event']);
+        $this->assertFalse($decoded['pass']);
+        $this->assertSame('empty_verified', $decoded['reason']);
+    }
+
+    public function testWriteVerifyStripsForbiddenKeysWhileKeepingPassAndReason(): void
+    {
+        $logPath = $this->tempDir . '/disclosure.jsonl';
+        $log = new DisclosureLog($logPath);
+
+        $log->write([
+            'correlation_id' => 'cid-verify-3',
+            'event' => 'verify',
+            'pass' => false,
+            'reason' => 'claims_dropped',
+            'message' => 'Patient HbA1c is 9.2%',
+            'note' => 'full note body',
+            'body' => 'raw',
+            'text' => 'clinical claim text',
+            'chart' => ['labs' => []],
+            'payload' => ['claims' => []],
+        ]);
+
+        $decoded = json_decode((string) file_get_contents($logPath), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('verify', $decoded['event']);
+        $this->assertFalse($decoded['pass']);
+        $this->assertSame('claims_dropped', $decoded['reason']);
+        $this->assertArrayNotHasKey('message', $decoded);
+        $this->assertArrayNotHasKey('note', $decoded);
+        $this->assertArrayNotHasKey('body', $decoded);
+        $this->assertArrayNotHasKey('text', $decoded);
+        $this->assertArrayNotHasKey('chart', $decoded);
+        $this->assertArrayNotHasKey('payload', $decoded);
+    }
+
+    public function testWriteRequiresCorrelationId(): void
+    {
+        $log = new DisclosureLog($this->tempDir . '/disclosure.jsonl');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Disclosure log entry requires correlation_id');
+
+        $log->write([
+            'event' => 'verify',
+            'pass' => true,
+            'reason' => 'ok',
+        ]);
+    }
+
+    public function testWriteRequiresEvent(): void
+    {
+        $log = new DisclosureLog($this->tempDir . '/disclosure.jsonl');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Disclosure log entry requires event');
+
+        $log->write([
+            'correlation_id' => 'cid-missing-event',
+            'pass' => true,
+            'reason' => 'ok',
+        ]);
+    }
 }

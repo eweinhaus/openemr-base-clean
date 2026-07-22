@@ -69,12 +69,26 @@ def _parse_sse(body: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
+async def _fake_ready(settings: object) -> dict[str, object]:
+    """Chat path gates on readiness — keep existing agent tests independent of probes."""
+    model = getattr(settings, "openrouter_model", "anthropic/claude-haiku-4.5")
+    return {
+        "ready": True,
+        "gateway": {"reachable": True},
+        "openrouter": {"configured": True, "reachable": True},
+        "langsmith": {"configured": False, "reachable": False},
+        "openrouter_model": model,
+    }
+
+
 def _stream_chat(
     monkeypatch: pytest.MonkeyPatch,
     payload: dict[str, object] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     if payload is None:
         payload = _chat_payload()
+
+    monkeypatch.setattr("sidecar.app.main.check_readiness", _fake_ready)
 
     with TestClient(app) as client:
         with client.stream(
@@ -666,3 +680,33 @@ def test_invalid_draft_json_yields_error_sse(
     assert error["code"] == ERROR_DRAFT_PARSE
     assert error["message"] == message_for_code(ERROR_DRAFT_PARSE)
     assert not any(name == "clinical" for name, _ in events)
+
+
+def test_disclosure_callback_failure_still_emits_clinical_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best-effort verify disclosure must not break progress→clinical→citation→done."""
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_LABS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_RESULT,
+    )
+
+    def _boom(*_a: object, **_k: object) -> bool:
+        raise RuntimeError("disclosure unavailable")
+
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.post_verify_disclosure",
+        _boom,
+    )
+
+    events = _stream_chat(monkeypatch)
+    names = [name for name, _ in events]
+    assert names.index("progress") < names.index("clinical")
+    assert names.index("clinical") < names.index("citation")
+    assert names.index("citation") < names.index("done")
+    assert not any(name == "error" for name, _ in events)

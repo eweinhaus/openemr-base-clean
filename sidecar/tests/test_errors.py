@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sidecar.app.errors import (
     ERROR_LLM_NOT_CONFIGURED,
+    ERROR_SIDECAR_UNREADY,
     ERROR_UNEXPECTED,
     message_for_code,
     sse_error_payload,
@@ -14,6 +15,13 @@ from sidecar.app.state import GENERIC_ERROR_MESSAGE
 def test_message_for_known_code() -> None:
     msg = message_for_code(ERROR_LLM_NOT_CONFIGURED)
     assert "OPENROUTER_API_KEY" in msg
+
+
+def test_message_for_sidecar_unready() -> None:
+    msg = message_for_code(ERROR_SIDECAR_UNREADY)
+    assert msg == "Co-Pilot is temporarily unavailable. Try again."
+    assert "OpenRouter" not in msg
+    assert "LangSmith" not in msg
 
 
 def test_message_for_unknown_code_falls_back() -> None:

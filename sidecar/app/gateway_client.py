@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from .auth import CORRELATION_HEADER, SECRET_HEADER
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_GATEWAY_TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
+DEFAULT_GATEWAY_DISCLOSURE_URL = (
+    "http://openemr/interface/ask_copilot/disclosure.php"
+)
+# Disclosure is best-effort audit — keep the wait short vs chart tools.
+DEFAULT_DISCLOSURE_TIMEOUT_SECONDS = 5.0
+
+
+def derive_disclosure_url(tool_url: str) -> str:
+    """Derive disclosure.php URL from the tool_proxy base when possible."""
+    if tool_url.endswith("tool_proxy.php"):
+        return tool_url[: -len("tool_proxy.php")] + "disclosure.php"
+    return DEFAULT_GATEWAY_DISCLOSURE_URL
 
 
 class GatewayError(Exception):
@@ -44,11 +59,14 @@ class GatewayClient:
         secret: str,
         tool_url: str,
         timeout: float,
+        disclosure_url: str | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         self._secret = secret
         self._tool_url = tool_url
         self._timeout = timeout
+        self._disclosure_url = disclosure_url or derive_disclosure_url(tool_url)
+        self._disclosure_timeout = min(timeout, DEFAULT_DISCLOSURE_TIMEOUT_SECONDS)
         self._client = client
         self._owns_client = client is None
 
@@ -108,3 +126,68 @@ class GatewayClient:
             raise GatewayError(f"tool_proxy error: {error}")
 
         return body
+
+    def post_verify_disclosure(
+        self,
+        *,
+        correlation_id: str,
+        passed: bool,
+        reason: str,
+    ) -> bool:
+        """Best-effort POST of a verify disclosure line. Never raises to callers."""
+        payload = {
+            "event": "verify",
+            "correlation_id": correlation_id,
+            "pass": passed,
+            "reason": reason,
+        }
+        headers = {
+            SECRET_HEADER: self._secret,
+            CORRELATION_HEADER: correlation_id,
+        }
+
+        http_client = self._client or httpx.Client(timeout=self._disclosure_timeout)
+        try:
+            try:
+                response = http_client.post(
+                    self._disclosure_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self._disclosure_timeout,
+                )
+            except httpx.TimeoutException:
+                logger.warning(
+                    "verify disclosure timed out",
+                    extra={"correlation_id": correlation_id},
+                )
+                return False
+            except httpx.RequestError as exc:
+                logger.warning(
+                    "verify disclosure request failed",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                return False
+
+            if response.status_code >= 400:
+                logger.warning(
+                    "verify disclosure rejected",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "status_code": response.status_code,
+                    },
+                )
+                return False
+            return True
+        except Exception:
+            logger.warning(
+                "verify disclosure unexpected failure",
+                extra={"correlation_id": correlation_id},
+                exc_info=True,
+            )
+            return False
+        finally:
+            if self._owns_client and self._client is None:
+                http_client.close()
