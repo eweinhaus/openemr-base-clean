@@ -72,9 +72,11 @@ curl -s http://127.0.0.1:8080/health
 ```
 
 Ready (soft — always HTTP 200; `ready: false` when the gateway is unreachable
-**or `OPENROUTER_API_KEY` is missing/unreachable**). LangSmith appears as a
-soft `langsmith: {configured, reachable}` field and never alone flips
-`ready`. `/ready` does **not** probe openFDA/DailyMed.
+**or `OPENROUTER_API_KEY` is missing**). OpenRouter `/models` reachability and
+LangSmith appear as soft fields (`openrouter.reachable`, `langsmith`) and never
+alone flip `ready`. `/ready` does **not** probe openFDA/DailyMed. `/v1/chat`
+reuses a short TTL readiness cache (`COPILOT_READY_CACHE_TTL_SECONDS`, default
+30s); `/ready` always probes fresh.
 
 ```bash
 curl -s http://127.0.0.1:8080/ready
@@ -127,6 +129,7 @@ pass the full env below). Healthcheck stays on **`/health` only** (never
 | `OPENFDA_API_KEY` | empty | Optional openFDA key (higher rate limits); `/ready` does **not** probe FDA |
 | `COPILOT_LLM_TIMEOUT_SECONDS` | `30` | Per-LLM-call budget (route and draft each) |
 | `COPILOT_TOOL_TIMEOUT_SECONDS` | `10` | Gateway tool / probe budget |
+| `COPILOT_READY_CACHE_TTL_SECONDS` | `30` | Cache `/v1/chat` readiness probes; `/ready` always fresh |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing when key is set |
 | `LANGSMITH_API_KEY` | empty | Optional; chat works without it (silent disable) |
 | `LANGSMITH_PROJECT` | `openemr-copilot-demo` | LangSmith project name |

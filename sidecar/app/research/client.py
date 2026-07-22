@@ -14,6 +14,7 @@ import httpx
 from .constants import (
     DAILYMED_BASE_URL,
     HTTP_DEADLINE_SECONDS,
+    HTTP_MAX_RESPONSE_BYTES,
     OPENFDA_LABEL_URL,
     TABLE_DAILYMED,
     TABLE_OPENFDA,
@@ -74,7 +75,7 @@ def fetch_label(
     key = api_key if api_key is not None else os.environ.get("OPENFDA_API_KEY")
     start = time.monotonic()
     owns_client = client is None
-    http = client or httpx.Client()
+    http = client or httpx.Client(follow_redirects=True)
 
     try:
         openfda = _try_openfda(
@@ -319,6 +320,9 @@ def _get_json(
     except httpx.HTTPError:
         return None, None, False
 
+    if _response_too_large(response):
+        return response.status_code, None, False
+
     try:
         payload: Any = response.json()
     except ValueError:
@@ -340,8 +344,24 @@ def _get_text(
     except httpx.HTTPError:
         return None, None, False
 
+    if _response_too_large(response):
+        return response.status_code, None, False
+
     text = response.text
     return response.status_code, text if text else None, False
+
+
+def _response_too_large(response: httpx.Response) -> bool:
+    """Reject oversized bodies before JSON/XML parse (memory guard)."""
+    content_length = response.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > HTTP_MAX_RESPONSE_BYTES:
+                return True
+        except ValueError:
+            pass
+    # Content may already be buffered; check actual size too.
+    return len(response.content) > HTTP_MAX_RESPONSE_BYTES
 
 
 def _first_openfda_result(payload: dict[str, Any]) -> dict[str, Any] | None:

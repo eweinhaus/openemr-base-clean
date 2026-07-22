@@ -261,3 +261,22 @@ def test_exceptions_become_miss_never_raise() -> None:
     assert isinstance(result, LabelFetchResult)
     assert result.ok is False
     assert result.outcome in {"miss", "timeout"}
+
+
+def test_oversized_openfda_body_treated_as_miss() -> None:
+    """Content-Length over HTTP_MAX_RESPONSE_BYTES must not be parsed."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-length": str(3_000_000)},
+            content=b"{}",
+        )
+
+    result = fetch_label(
+        _query(term="simvastatin", rxcui=None),
+        client=_client(handler),
+        deadline_seconds=5.0,
+    )
+    assert result.ok is False
+    assert result.outcome in {"miss", "timeout"}

@@ -209,7 +209,7 @@ for claim in draft.claims:
         text=fact["text"],
         source_type=claim.source_type,  # H2: never force "chart"
         locator=claim.locator,
-        excerpt=fact.get("excerpt") or claim.excerpt,
+        excerpt=fact.get("excerpt"),  # source-derived only; never model excerpt
     ))
 # H1: append DOSING_REFUSAL only if dosing_like and no verified
 # claim with source_type=="research" and table in {"openfda","dailymed"}

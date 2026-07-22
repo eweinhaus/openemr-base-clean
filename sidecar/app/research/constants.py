@@ -21,6 +21,8 @@ UNCERTAIN_RXNORM_SUFFIX = " (RxNorm not on file — drug identity uncertain)"
 TEXT_MAX_CHARS = 1500
 HTTP_DEADLINE_SECONDS = 5.0
 SCRUB_MAX_LENGTH = 64
+# Cap raw label/XML bodies before parse (2 GB host; DoS / memory guard).
+HTTP_MAX_RESPONSE_BYTES = 2_000_000
 
 # --- External APIs ---
 

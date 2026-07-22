@@ -389,7 +389,7 @@ Interview join: grep disclosure JSONL for `correlation_id` ↔ open LangSmith ru
 
 1. Optional LangSmith keys; silent disable when absent.  
 2. Hide inputs/outputs required when tracing on.  
-3. Soft LangSmith on `/ready`; hard deps = gateway + OpenRouter.  
+3. Soft LangSmith on `/ready`; hard deps = gateway reachable + OpenRouter **key configured** (`openrouter.reachable` / LangSmith are soft). `/v1/chat` caches readiness (~30s TTL); `/ready` always fresh.  
 4. Sidecar fail-closed with `sidecar_unready`; Compose stays on `/health`.  
 5. Sidecar→PHP `verify` disclosure callback; best-effort.  
 6. No `pid` in Smith metadata; no dashboard/load-test implementation.

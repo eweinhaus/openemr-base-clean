@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -28,6 +29,11 @@ DEFAULT_GATEWAY_TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 DEFAULT_LANGSMITH_PROJECT = "openemr-copilot-demo"
+DEFAULT_READY_CACHE_TTL_SECONDS = 30.0
+
+# Process-local readiness cache for /v1/chat (ops /ready always probes fresh).
+_ready_cache_body: Dict[str, Any] | None = None
+_ready_cache_expires_at: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -40,6 +46,7 @@ class Settings:
     openrouter_model: str
     llm_timeout_seconds: float
     tool_timeout_seconds: float
+    ready_cache_ttl_seconds: float
     langsmith_api_key: str
     langsmith_tracing: bool
     langsmith_project: str
@@ -67,6 +74,12 @@ def load_settings() -> Settings:
         ),
         tool_timeout_seconds=float(
             os.environ.get("COPILOT_TOOL_TIMEOUT_SECONDS", "10")
+        ),
+        ready_cache_ttl_seconds=float(
+            os.environ.get(
+                "COPILOT_READY_CACHE_TTL_SECONDS",
+                str(DEFAULT_READY_CACHE_TTL_SECONDS),
+            )
         ),
         langsmith_api_key=langsmith_api_key(),
         langsmith_tracing=tracing_raw in ("1", "true", "yes", "on"),
@@ -111,6 +124,13 @@ app = FastAPI(title="Clinical Co-Pilot Sidecar", lifespan=lifespan)
 
 def get_settings() -> Settings:
     return load_settings()
+
+
+def clear_ready_cache() -> None:
+    """Test helper — drop the process-local readiness cache."""
+    global _ready_cache_body, _ready_cache_expires_at
+    _ready_cache_body = None
+    _ready_cache_expires_at = 0.0
 
 
 async def _probe_url(
@@ -161,16 +181,11 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
         )
 
     openrouter["configured"] = bool(settings.openrouter_api_key)
-    # A missing OpenRouter key means clinical turns will fail — report unready
-    # so a health probe catches the misconfiguration instead of masking it.
-    # H10 (PRD 05): do not probe openFDA / DailyMed here — research is
-    # best-effort at tool time and must not gate readiness.
-    # H3 (PRD 07): LangSmith is soft — missing/unreachable does not set ready=false.
-    ready = (
-        gateway.get("reachable") is True
-        and bool(settings.openrouter_api_key)
-        and openrouter.get("reachable") is True
-    )
+    # Hard ready = gateway reachable + OpenRouter key present.
+    # openrouter.reachable is soft (like langsmith): a transient /models 5xx
+    # must not fail-close clinical turns — live LLM errors surface as llm_*.
+    # H10 (PRD 05): do not probe openFDA / DailyMed here.
+    ready = gateway.get("reachable") is True and bool(settings.openrouter_api_key)
     return {
         "ready": ready,
         "gateway": gateway,
@@ -178,6 +193,30 @@ async def check_readiness(settings: Settings) -> Dict[str, Any]:
         "langsmith": langsmith,
         "openrouter_model": settings.openrouter_model,
     }
+
+
+async def get_readiness(
+    settings: Settings,
+    *,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
+    """Return readiness; cache for chat hot path, fresh for ops /ready."""
+    global _ready_cache_body, _ready_cache_expires_at
+
+    now = time.monotonic()
+    ttl = max(0.0, float(settings.ready_cache_ttl_seconds))
+    if (
+        not force_refresh
+        and ttl > 0
+        and _ready_cache_body is not None
+        and now < _ready_cache_expires_at
+    ):
+        return _ready_cache_body
+
+    body = await check_readiness(settings)
+    _ready_cache_body = body
+    _ready_cache_expires_at = now + ttl
+    return body
 
 
 def _chat_event_iterator(
@@ -222,7 +261,8 @@ async def health() -> PlainTextResponse:
 @app.get("/ready")
 async def ready() -> JSONResponse:
     settings = get_settings()
-    body = await check_readiness(settings)
+    # Ops probe always fresh — do not serve a stale cache here.
+    body = await get_readiness(settings, force_refresh=True)
     return JSONResponse(content=body)
 
 
@@ -240,7 +280,7 @@ async def chat(
 
     correlation_id = body.correlation_id or x_correlation_id or ""
 
-    readiness = await check_readiness(settings)
+    readiness = await get_readiness(settings, force_refresh=False)
     if not readiness.get("ready"):
         return StreamingResponse(
             _unready_event_iterator(correlation_id=correlation_id),

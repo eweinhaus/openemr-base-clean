@@ -117,9 +117,10 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 
 - **LangGraph** = agent workflow; **LangSmith** = optional redacted traces (not interchangeable)
 - Env-gated `LANGSMITH_*`; startup forces hide inputs/outputs when tracing on; run metadata = `correlation_id` only (no `pid`/message)
-- Soft `/ready.langsmith` (`configured`/`reachable`); hard `ready` = gateway + OpenRouter only; **never FDA**; Compose healthcheck stays on `/health`
-- Unready → SSE `sidecar_unready` immediately (no graph/LLM/clinical)
+- Soft `/ready.langsmith` + soft `openrouter.reachable`; hard `ready` = gateway reachable + OpenRouter **key**; **never FDA**; Compose healthcheck stays on `/health`
+- `/v1/chat` caches readiness (~30s TTL); ops `/ready` always fresh; unready → SSE `sidecar_unready` immediately (no graph/LLM/clinical)
 - App owns disclosure JSONL: `ask_start` / `tool_proxy` / **`verify`** via secret-gated `disclosure.php` (`VerifyDisclosureService`); sidecar best-effort POST after verify
+- `tool_proxy` / `disclosure` also gated by `InternalEndpointGuard` (private/loopback `REMOTE_ADDR` by default)
 - Alert defs stubbed in markdown only — no dashboard polish / wired paging
 - Canonical PRD: `docs/PRDs/07-observability-langsmith.md` (H1–H13)
 

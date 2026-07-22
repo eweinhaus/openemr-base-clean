@@ -21,12 +21,23 @@ if (empty($_GET['site'])) {
 require_once("../globals.php");
 
 use OpenEMR\ClinicalCopilot\Gateway\FileCorrelationBindStore;
+use OpenEMR\ClinicalCopilot\Gateway\InternalEndpointGuard;
 use OpenEMR\ClinicalCopilot\Gateway\VerifyDisclosureService;
 use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
 use OpenEMR\Core\OEGlobalsBag;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+
+$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+if (!is_string($remoteAddr)) {
+    $remoteAddr = null;
+}
+if (!InternalEndpointGuard::isRemoteAddrAllowed($remoteAddr)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'forbidden'], JSON_THROW_ON_ERROR);
+    exit;
+}
 
 $secret = getenv('COPILOT_INTERNAL_SECRET');
 if (!is_string($secret) || $secret === '') {

@@ -91,6 +91,91 @@ def test_ready_reports_ready_when_probes_succeed_with_api_key(
     assert body["langsmith"]["configured"] is False
 
 
+def test_ready_openrouter_models_unreachable_is_soft_when_key_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transient OpenRouter /models failures must not alone set ready=false."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+
+    async def fake_probe(
+        _client: object, url: str, **_kwargs: object
+    ) -> dict[str, object]:
+        if url.endswith("/models"):
+            return {"reachable": False, "error": "ConnectError"}
+        return {"reachable": True, "status_code": 200}
+
+    with patch("sidecar.app.main._probe_url", new=AsyncMock(side_effect=fake_probe)):
+        with TestClient(app) as client:
+            response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    assert body["gateway"]["reachable"] is True
+    assert body["openrouter"]["configured"] is True
+    assert body["openrouter"]["reachable"] is False
+
+
+def test_chat_reuses_ready_cache_within_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/v1/chat should not re-probe hard deps on every turn (TTL cache)."""
+    monkeypatch.setenv("COPILOT_INTERNAL_SECRET", TEST_SECRET)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    monkeypatch.setenv("COPILOT_READY_CACHE_TTL_SECONDS", "60")
+
+    probe_calls = {"n": 0}
+
+    async def counting_ready(_settings: object) -> dict[str, object]:
+        probe_calls["n"] += 1
+        return {
+            "ready": True,
+            "gateway": {"reachable": True},
+            "openrouter": {"configured": True, "reachable": True},
+            "langsmith": {"configured": False, "reachable": False},
+            "openrouter_model": "anthropic/claude-haiku-4.5",
+        }
+
+    def fake_events(**_kwargs: object):
+        yield ("clinical", {"text": "ok", "segments": []})
+        yield ("citation", {"citations": []})
+        yield ("done", {"correlation_id": "corr-cache-1"})
+
+    monkeypatch.setattr("sidecar.app.main.check_readiness", counting_ready)
+    monkeypatch.setattr(
+        "sidecar.app.main.iter_chat_events",
+        lambda **kwargs: fake_events(**kwargs),
+    )
+
+    headers = {
+        SECRET_HEADER: TEST_SECRET,
+        CORRELATION_HEADER: "corr-cache-1",
+        "Accept": "text/event-stream",
+    }
+    payload = {
+        "correlation_id": "corr-cache-1",
+        "user_id": 1,
+        "username": "admin",
+        "pid": 6,
+        "message": "Brief me",
+        "transcript": [],
+    }
+
+    with TestClient(app) as client:
+        for _ in range(2):
+            with client.stream(
+                "POST",
+                "/v1/chat",
+                json=payload,
+                headers=headers,
+            ) as response:
+                assert response.status_code == 200
+                _ = "".join(response.iter_text())
+
+    assert probe_calls["n"] == 1
+
+
 def test_ready_soft_langsmith_unreachable_does_not_flip_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

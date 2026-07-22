@@ -2,17 +2,26 @@
 
 ## Current focus
 
-**PRD 07 on DO (2026-07-22):** Commit `517f95a` pushed + redeployed to https://142.93.255.212/. Overlay `disclosure.php` + `VerifyDisclosureService`; sidecar rebuild (langsmith pin, soft `/ready.langsmith`, fail-closed `sidecar_unready`). Bind-seeded pid **6** dosing SSE → progress → clinical → citation → done; disclosure JSONL includes `tool_proxy` + **`verify`** (`pass:true`,`reason:ok`) same `correlation_id`. Module active; OpenRouter **set**; LangSmith keys **optional/empty** (chat OK; soft field `configured:false`). Login redirect 302.
+**Post-PRD 4–7 review hardening (2026-07-22, local):** Addressed code-review M1–M2 / L1–L3 —
+readiness TTL cache + soft OpenRouter `/models` probe; `InternalEndpointGuard` on
+`tool_proxy`/`disclosure` (private/loopback by default); research body cap +
+`defusedxml`; verify never keeps model excerpt; research client follows redirects.
+Sidecar pytest **161** green. Not yet redeployed to DO.
 
-**Next:** Optional Ask Co-Pilot Source click-path smoke; Early narrative / eval thin / demo video.
+**Prior — PRD 07 on DO:** Commit `517f95a` at https://142.93.255.212/ (disclosure
+verify join smoked). Redeploy after packaging this hardening pass.
+
+**Next:** Package/redeploy review fixes to DO; optional Source click-path smoke;
+Early narrative / eval thin / demo video.
 
 ## PRD 07 decisions (locked — implemented)
 
 Canonical: `docs/PRDs/07-observability-langsmith.md` (H1–H13).
 
 - **LangSmith:** Optional keys; silent disable; force hide I/O when tracing on; metadata `correlation_id` only (no `pid`/message); no `wrap_openai` for MVP.
-- **`/ready`:** Soft `langsmith` field; hard deps = gateway + OpenRouter; never FDA; Compose healthcheck stays on `/health`.
+- **`/ready`:** Soft `langsmith` + soft `openrouter.reachable`; hard deps = gateway reachable + OpenRouter **key**; never FDA; Compose healthcheck stays on `/health`. `/v1/chat` uses ~30s readiness cache; `/ready` always fresh.
 - **Fail-closed:** Sidecar `/v1/chat` gates on ready → SSE `sidecar_unready` (no graph).
+- **Internal endpoints:** `tool_proxy.php` / `disclosure.php` reject public `REMOTE_ADDR` via `InternalEndpointGuard` (loopback/RFC1918; escape `COPILOT_INTERNAL_ENDPOINTS_PUBLIC=1`).
 - **Disclosure join:** Sidecar → `disclosure.php` → `VerifyDisclosureService` → JSONL `event=verify` (`pass` + short `reason`); best-effort.
 - **Pass heuristic:** `pass:true` iff ≥1 verified claim; else `claims_dropped` / `all_refused` / `empty_verified`.
 - **Alerts:** Markdown stubs only (README + PRD §10) — not wired.

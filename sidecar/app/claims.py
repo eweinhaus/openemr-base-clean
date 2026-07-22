@@ -145,12 +145,13 @@ def verify_claims(
         fact_text = fact.get("text", "").strip()
         if not fact_text:
             continue
+        # Excerpt is source-derived only — never fall back to model-authored text.
         verified.append(
             Claim(
                 text=fact_text,
                 source_type=claim.source_type,
                 locator=claim.locator,
-                excerpt=fact.get("excerpt") or claim.excerpt,
+                excerpt=fact.get("excerpt"),
             )
         )
     return verified

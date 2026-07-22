@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
 from typing import Any, Mapping
 from xml.etree.ElementTree import Element
+
+import defusedxml.ElementTree as ET
 
 from .constants import (
     DAILYMED_DOSAGE_LOINC,

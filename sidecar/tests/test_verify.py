@@ -91,6 +91,30 @@ def test_matching_locator_uses_tool_fact_text_not_model_prose() -> None:
     assert verified[0].excerpt == "excerpt"
 
 
+def test_verify_does_not_use_model_excerpt_when_fact_has_none() -> None:
+    """Citations must stay source-derived — never fall back to model excerpt."""
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Invented claim prose",
+                source_type="chart",
+                locator=Locator(table="procedure_result", id="42"),
+                excerpt="model-authored excerpt must not ship",
+            )
+        ],
+        refusals=[],
+    )
+    fact_map = {
+        ("procedure_result", "42"): {"text": "Creatinine 1.4 mg/dL"},
+    }
+
+    verified = verify_claims(draft, fact_map)
+
+    assert len(verified) == 1
+    assert verified[0].text == "Creatinine 1.4 mg/dL"
+    assert verified[0].excerpt is None
+
+
 def test_research_claim_kept_source_type() -> None:
     draft = DraftClaims(
         claims=[
