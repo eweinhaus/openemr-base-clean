@@ -35,11 +35,11 @@
 - [x] **DO redeploy PRD 06 (2026-07-22):** commit `58eb115`; overlay+sidecar; module active; OpenRouter set; bind-seeded pid 6 dosing → progress → clinical+segments → research citation → done.
 - [x] **PRD 07 written + coded (2026-07-22):** LangSmith env-gated + force hide; soft `/ready.langsmith`; `sidecar_unready` fail-closed; `disclosure.php` + `VerifyDisclosureService`; verify callback; alert stubs in README; sidecar pytest **157**; isolated PHPUnit disclosure **29**.
 - [x] **PRD 07 on DO (2026-07-22):** commit `517f95a`; disclosure `verify` join smoked.
-- [x] **PRD 4–7 review hardening (2026-07-22, local):** readiness cache + soft OpenRouter `/models`; `InternalEndpointGuard`; research body cap + `defusedxml`; no model excerpt fallback; research redirects. Sidecar pytest **161**.
+- [x] **PRD 4–7 review hardening (2026-07-22):** readiness cache + soft OpenRouter `/models`; `InternalEndpointGuard`; research body cap + `defusedxml`; no model excerpt fallback; research redirects. Sidecar pytest **161**. Commit `8b3f4d8`.
+- [x] **DO redeploy review hardening (2026-07-22):** `8b3f4d8` overlay+sidecar; module active; OpenRouter set; pid 6 dosing → progress → clinical → citation → done; disclosure `verify` join confirmed.
 
 ## Remaining (MVP → Early)
 
-- [ ] Redeploy review hardening to DO (package overlay + sidecar rebuild)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] Optional LangSmith keys on DO for redacted-trace screenshot

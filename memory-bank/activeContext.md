@@ -2,17 +2,16 @@
 
 ## Current focus
 
-**Post-PRD 4–7 review hardening (2026-07-22, local):** Addressed code-review M1–M2 / L1–L3 —
-readiness TTL cache + soft OpenRouter `/models` probe; `InternalEndpointGuard` on
-`tool_proxy`/`disclosure` (private/loopback by default); research body cap +
-`defusedxml`; verify never keeps model excerpt; research client follows redirects.
-Sidecar pytest **161** green. Not yet redeployed to DO.
+**Review hardening on DO (2026-07-22):** Commit `8b3f4d8` packaged + redeployed to
+https://142.93.255.212/. Overlay includes `InternalEndpointGuard`; sidecar rebuild
+with `defusedxml` + readiness TTL cache. Module active; OpenRouter **set**;
+LangSmith optional empty. Bind-seeded pid **6** dosing SSE → progress (chart →
+meds → label) → clinical + segments → citation → done; disclosure JSONL
+`tool_proxy` + **`verify`** (`pass:true`,`reason:ok`) same `correlation_id`.
+Sidecar `/ready` true (gateway + key; soft openrouter/langsmith).
 
-**Prior — PRD 07 on DO:** Commit `517f95a` at https://142.93.255.212/ (disclosure
-verify join smoked). Redeploy after packaging this hardening pass.
-
-**Next:** Package/redeploy review fixes to DO; optional Source click-path smoke;
-Early narrative / eval thin / demo video.
+**Next:** Optional Ask Co-Pilot Source click-path smoke; Early narrative / eval
+thin / demo video.
 
 ## PRD 07 decisions (locked — implemented)
 
