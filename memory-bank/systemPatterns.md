@@ -9,7 +9,7 @@
 | `/interface` | Web UI controllers |
 | `/templates` | Twig (modern) + Smarty (legacy) |
 
-OpenEMR-side co-pilot code in `/src` only; extend `BaseService`. MVP chart path = **PHP services**, not raw SQL. FHIR/SMART = phase 2.
+OpenEMR-side co-pilot code in `/src` only. Prefer `BaseService` when it fits; Co-Pilot facades that need isolated PHPUnit (Schedule, Chart) may use injectable loaders **without** extending `BaseService` (DB bootstrap breaks isolated tests). MVP chart path = **PHP services**, not raw SQL. FHIR/SMART = phase 2.
 
 ## OpenEMR UI shell (for first-class pages)
 
@@ -56,9 +56,9 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 
 ## Integration seams
 
-1. **`PatientContextService`** — UC-1 snapshot; drill-down tools for labs/meds/notes
+1. **`src/ClinicalCopilot/Chart/`** — `PatientContextService` + Labs/Meds/Notes + `ChartToolDispatcher` (Schedule-style injectable loaders); wired via `ToolProxyService`
 2. Ask Co-Pilot tab + gateway SSE endpoint
-3. Sidecar chart access **only via gateway** in MVP
+3. Sidecar chart access **only via gateway** in MVP; brief = four tools in parallel; empty ≠ error; per-tool domain errors → partial assemble
 4. Separate PHI-disclosure / verification log
 5. Agent **read-only** into the chart
 
@@ -68,7 +68,8 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - Problems/allergies: `lists` via `type`
 - Meds: `prescriptions` (`drug` ± `rxnorm_drugcode`) — missing RxNorm ⇒ uncertain; never invent codes
 - Visits: `form_encounter`
-- Notes: selective recent / relevant only
+- Notes: `form_clinical_notes` selective recent (cap 3, excerpt ≤500); Synthea typically empty
+- Active Rx filter: `prescriptions.active=1` AND open-ended `end_date` (past end_date = completed even if active flag set)
 
 ## Verification pattern
 

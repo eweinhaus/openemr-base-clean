@@ -160,6 +160,154 @@ def test_meds_dosing_refusal_appears_in_assembled_text() -> None:
     assert DOSING_REFUSAL_TEXT in text
 
 
+def test_assemble_empty_labs_line_without_fake_citation() -> None:
+    text = assemble_clinical(
+        [],
+        [],
+        tool_results=[
+            {"ok": True, "tool": "labs", "data": {"facts": []}},
+        ],
+        tool_domain_errors={},
+        requested_tools=["labs"],
+    )
+
+    assert "No recent labs on file." in text
+    assert EMPTY_MESSAGE not in text
+    assert "procedure_result" not in text
+    assert "locator" not in text.lower()
+
+
+def test_assemble_unavailable_notes_line() -> None:
+    verified = [
+        Claim(
+            text="Creatinine 1.4 mg/dL",
+            source_type="chart",
+            locator=Locator(table="procedure_result", id="42"),
+        )
+    ]
+    text = assemble_clinical(
+        verified,
+        [],
+        tool_results=[
+            {
+                "ok": True,
+                "tool": "labs",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Creatinine 1.4 mg/dL",
+                            "table": "procedure_result",
+                            "id": "42",
+                        }
+                    ]
+                },
+            }
+        ],
+        tool_domain_errors={"notes": "gateway_server"},
+        requested_tools=["labs", "notes"],
+    )
+
+    assert "Creatinine 1.4 mg/dL" in text
+    assert "Notes unavailable — try again." in text
+
+
+def test_assemble_conditions_empty_when_only_visit_fact() -> None:
+    text = assemble_clinical(
+        [
+            Claim(
+                text="Last visit 2026-01-18 — check up",
+                source_type="chart",
+                locator=Locator(table="form_encounter", id="9"),
+            )
+        ],
+        [],
+        tool_results=[
+            {
+                "ok": True,
+                "tool": "patient_context",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Last visit 2026-01-18 — check up",
+                            "table": "form_encounter",
+                            "id": "9",
+                        }
+                    ]
+                },
+            }
+        ],
+        tool_domain_errors={},
+        requested_tools=["patient_context"],
+    )
+
+    assert "Last visit 2026-01-18" in text
+    assert "No active conditions on file." in text
+
+
+def test_assemble_meds_meta_only_allergies_empty() -> None:
+    text = assemble_clinical(
+        [
+            Claim(
+                text="Metformin 500 mg",
+                source_type="chart",
+                locator=Locator(table="prescriptions", id="1"),
+            )
+        ],
+        [],
+        tool_results=[
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Metformin 500 mg",
+                            "table": "prescriptions",
+                            "id": "1",
+                        }
+                    ],
+                    "meta": {"active_med_count": 1, "allergy_count": 0},
+                },
+            }
+        ],
+        tool_domain_errors={},
+        requested_tools=["meds"],
+    )
+
+    assert "Metformin 500 mg" in text
+    assert "No allergies on file." in text
+    assert "No active medications on file." not in text
+
+
+def test_assemble_meds_empty_facts_no_meta_both_one_liners() -> None:
+    text = assemble_clinical(
+        [],
+        [],
+        tool_results=[
+            {"ok": True, "tool": "meds", "data": {"facts": []}},
+        ],
+        tool_domain_errors={},
+        requested_tools=["meds"],
+    )
+
+    assert "No active medications on file." in text
+    assert "No allergies on file." in text
+    assert "Medications unavailable" not in text
+
+
+def test_assemble_chart_summary_unavailable() -> None:
+    text = assemble_clinical(
+        [],
+        [],
+        tool_results=[],
+        tool_domain_errors={"patient_context": "gateway_server"},
+        requested_tools=["patient_context"],
+    )
+
+    assert "Chart summary unavailable — try again." in text
+    assert "No active conditions on file." not in text
+
+
 def test_duplicate_locators_verified_once() -> None:
     draft = DraftClaims(
         claims=[

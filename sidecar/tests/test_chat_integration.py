@@ -88,9 +88,9 @@ def _stream_chat(
     return _parse_sse(body)
 
 
-LABS_STUB_RESULT: dict[str, Any] = {
+LABS_RESULT: dict[str, Any] = {
     "ok": True,
-    "tool": "labs_stub",
+    "tool": "labs",
     "data": {
         "facts": [
             {
@@ -103,9 +103,9 @@ LABS_STUB_RESULT: dict[str, Any] = {
     },
 }
 
-MEDS_STUB_RESULT: dict[str, Any] = {
+MEDS_RESULT: dict[str, Any] = {
     "ok": True,
-    "tool": "meds_stub",
+    "tool": "meds",
     "data": {
         "facts": [
             {
@@ -114,7 +114,8 @@ MEDS_STUB_RESULT: dict[str, Any] = {
                 "id": "201",
                 "excerpt": "Active Rx — started 2020-01-10",
             }
-        ]
+        ],
+        "meta": {"active_med_count": 1, "allergy_count": 0},
     },
 }
 
@@ -168,7 +169,7 @@ def test_happy_path_labs_progress_clinical_done(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: LABS_STUB_RESULT,
+        lambda *_a, **_k: LABS_RESULT,
     )
 
     events = _stream_chat(monkeypatch)
@@ -201,7 +202,7 @@ def test_invented_locator_dropped_from_clinical(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: LABS_STUB_RESULT,
+        lambda *_a, **_k: LABS_RESULT,
     )
 
     events = _stream_chat(monkeypatch)
@@ -221,7 +222,7 @@ def test_dosing_question_includes_dosing_refusal(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: MEDS_STUB_RESULT,
+        lambda *_a, **_k: MEDS_RESULT,
     )
 
     events = _stream_chat(
@@ -245,7 +246,7 @@ def test_med_list_question_has_no_dosing_refusal(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: MEDS_STUB_RESULT,
+        lambda *_a, **_k: MEDS_RESULT,
     )
 
     events = _stream_chat(
@@ -263,7 +264,7 @@ def test_oversized_message_yields_error_sse(
 ) -> None:
     """Messages beyond the gateway cap are refused before any LLM/tool work."""
     route_mock = MagicMock(return_value="labs")
-    gateway_mock = MagicMock(return_value=LABS_STUB_RESULT)
+    gateway_mock = MagicMock(return_value=LABS_RESULT)
     monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
@@ -286,7 +287,7 @@ def test_missing_pid_refuses_without_llm_or_gateway(
 ) -> None:
     route_mock = MagicMock(return_value="labs")
     draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
-    gateway_mock = MagicMock(return_value=LABS_STUB_RESULT)
+    gateway_mock = MagicMock(return_value=LABS_RESULT)
     monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
     monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
     monkeypatch.setattr(
@@ -317,7 +318,7 @@ def test_llm_error_yields_generic_error_sse(
     monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", _raise_llm)
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: LABS_STUB_RESULT,
+        lambda *_a, **_k: LABS_RESULT,
     )
 
     events = _stream_chat(monkeypatch)
@@ -337,7 +338,7 @@ def test_route_llm_error_yields_generic_error_sse(
         raise LlmError("OpenRouter request failed")
 
     draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
-    gateway_mock = MagicMock(return_value=LABS_STUB_RESULT)
+    gateway_mock = MagicMock(return_value=LABS_RESULT)
     monkeypatch.setattr("sidecar.app.nodes.route.route_message", _raise_route)
     monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
     monkeypatch.setattr(
@@ -459,7 +460,7 @@ def test_invented_claim_text_with_valid_locator_replaced_by_tool_fact(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: LABS_STUB_RESULT,
+        lambda *_a, **_k: LABS_RESULT,
     )
 
     events = _stream_chat(monkeypatch)
@@ -480,7 +481,7 @@ def test_invalid_draft_json_yields_error_sse(
     )
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
-        lambda *_a, **_k: LABS_STUB_RESULT,
+        lambda *_a, **_k: LABS_RESULT,
     )
 
     events = _stream_chat(monkeypatch)

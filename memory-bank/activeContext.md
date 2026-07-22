@@ -2,26 +2,23 @@
 
 ## Current focus
 
-**DO Co-Pilot redeployed (2026-07-21):** overlay (picker + schedule + QA) + sidecar on https://142.93.255.212/. Module active; mounts OK; OpenRouter key set; model pin `anthropic/claude-haiku-4.5`. HTTP smoke: `schedule.php` 200 (empty today appts); unbound stream → `unbound_patient`; pid 6 → progress → `draft_parse_failed` (not 402/404 — spine live; draft JSON parse still flaky on DO).
+**PRD 04 chart tools shipped locally (2026-07-21):** Real PHP chart readers behind `tool_proxy` (`patient_context` · `labs` · `meds` · `notes`); stubs removed. Sidecar brief gathers all four in parallel with partial-domain failure + empty/unavailable assembly. Isolated PHPUnit ClinicalCopilot **123** + sidecar pytest **70** green. Local DB smoke pid **6** (labs/meds rich) + pid **8** (allergies).
 
-**Local LLM path still green:** pid 2 → progress → clinical → done.
+**DO:** Previously green on stub path (2026-07-22 UTC sync). Needs **overlay + sidecar redeploy** to pick up PRD 04 (Chart PHP + renamed tools) — batch with interview prep; not a merge gate.
 
-Next: seed DO same-day appts for picker demo; triage `draft_parse_failed` on DO; then **PRD 04** chart services behind tool_proxy.
+Next: **PRD 05** research (openFDA → DailyMed) **or** DO redeploy smoke on rich patient before interview.
 
-## PRD 04 decisions (2026-07-21, via ai-decision-guide)
+## PRD 04 decisions (locked — implemented)
 
-Locked for implementation (engineering guesses; reversible; not stack changes):
-
-- **Tools (rename stubs):** `patient_context` · `labs` · `meds` · `notes` — drop `*_stub` names.
-- **Routes:** `brief` → `patient_context` only; `labs` → `labs`; `meds` → `meds`. `notes` available for follow-up calls (not required on brief if snapshot already embeds selective notes).
-- **Fact contract unchanged:** `{text, table, id, excerpt}` with real table+pk; optional FHIR UUID field when row has one — never invent.
-- **`PatientContextService` snapshot (UC-1):** last visit / reason-on-file if present, active conditions, allergies, active meds, recent labs (capped), selective recent notes (capped + truncated excerpt). Prefer structured facts over notes when both exist.
-- **Caps (simple defaults):** ~15 recent lab results; ~3 recent notes; notes excerpt truncated (no full-note dump). Labs “abnormal” only if chart already flags it — no invented reference-range logic.
-- **Meds tool:** active prescriptions + allergies (chart side of UC-3); missing RxNorm → uncertain identity in fact text; no invented codes; dosing research stays PRD 05.
-- **Implementation:** `/src` services extending `BaseService`; compose existing OpenEMR services where practical; `QueryUtils` only for gaps. `ToolProxyService` dispatches after existing secret + pid/user_id bind checks. Sidecar still gateway-only.
-- **No TTL cache in PRD 04** — defer (AUDIT 30–60s was optional); note as debt if latency hurts demo.
-- **Tests:** few high-value — pid fail-closed still green; fact shaping; one happy-path tool with real/seeded pid. Smoke Synthea local then DO.
-- **Out of PRD 04:** openFDA/DailyMed, citation popups, LangSmith, FHIR-primary, chart writes.
+- **Tools:** `patient_context` · `labs` · `meds` · `notes` (no `*_stub`).
+- **Routes:** `brief` → all four parallel (`max_workers` 4); `labs`/`meds` → single tool.
+- **Fail-closed vs empty vs throw:** auth/bind unchanged. `facts: []` = success. One tool 5xx → partial answer + allowlisted unavailable line; all tools fail or auth → whole-turn error.
+- **Empty/unavailable copy:** sidecar `assemble_clinical` (no fake locators). Meds prefer `data.meta` `{active_med_count, allergy_count}`.
+- **Domain ownership:** context = last encounter + active problems only; labs/meds/notes own their domains.
+- **Active Rx:** `active=1` + open-ended `end_date`; missing RxNorm → uncertain wording.
+- **Notes:** `form_clinical_notes` only; Synthea empty OK.
+- **Impl:** `src/ClinicalCopilot/Chart/` Schedule-style (injectable loaders, **not** BaseService); `ChartToolDispatcher` → `ToolProxyService`; sidecar `tool_domain_errors`.
+- **Out of 04:** research, citation UI, LangSmith, TTL cache, note seed, FHIR-primary.
 
 ## Builder context (for how to teach / decide with this user)
 
@@ -92,9 +89,18 @@ Locked for implementation (engineering guesses; reversible; not stack changes):
 - North star: interview MVP on DO; extensible seams; few happy-path bugs; **not** production
 - Engineering guesses OK; clinical claims must be verified+cited, labeled unverified, or refused
 - Shortcuts/fakes OK if noted as Memory Bank debt; **do not** fake roadmap spine steps 1–7
-- Under pressure: keep UC-1 → UC-2; thin UC-3 first; vertical trust slice before wide skeleton
-- Live DO > local for demo truth
-- Escalation: auth/PHI/verify-bypass/chart writes/DO data loss/stack-lock changes — see decision guide
+- Under pressure: keep UC-1 → UC-2; label-backed UC-3 if easy; else thin UC-3; vertical trust slice before wide skeleton
+- **Keep shipping spine locally;** batch DO deploy/flakiness fixes before interview (DO still final talk-track truth)
+- Escalation: auth/PHI/verify-bypass/chart writes/DO data loss/stack-lock changes **or** ~90s physician-story changes — see decision guide
+
+### Physician UX defaults (2026-07-21, decision guide §6)
+
+- **~90s budget:** design rich brief for post-cache speed; accept uncached latency now
+- **Partial tool failure:** ship verified domains + `… unavailable — try again.` (never invent filler; never whole-turn fail if anything verified)
+- **Empty domains:** explicit one-liners (`No allergies on file.` etc.) — omit ≠ “none checked”
+- **Citations:** link **every** verified claim; popup for details; conflicts = short chat + both linkable
+- **Progress:** clinical-ish (`Pulling labs…`) — no toolchain jargon
+- **UC-3:** one label-backed dosing/interaction nice if PRD 05 makes it easy
 
 ## Deferred (explicit in ARCHITECTURE.md)
 
@@ -102,35 +108,27 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Deferred debt (shortcuts)
 
-- **Stub chart facts until PRD 04:** tool_proxy returns fixture locators (not live PHP services / DB).
-- **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used for PRD 03 verification. DO/local should rebuild `copilot-sidecar` once pull works; set `OPENROUTER_API_KEY` on host.
-- **DO overlay bind-mounts (not fork-built image):** Co-Pilot PHP lives under `/opt/openemr/overlay/` mounted into stock `openemr/openemr:latest`; survives recreate. Full fork image still deferred.
-- **DO OpenRouter env set** — key present; `OPENROUTER_MODEL=anthropic/claude-haiku-4.5`; Send reaches draft (occasional `draft_parse_failed`).
-- **DO schedule empty** — no same-day `openemr_postcalendar_events` for admin yet; picker falls through to Finder.
+- **Brief four-tool bundle not cached yet** (planned TTL ~30–60s); first brief may be slow under 120s gateway budget.
+- **Synthea notes empty:** `form_clinical_notes` unused by CCDA import — honest empty domain; optional seed later for interview script.
+- **Draft parse under rich tools:** watch `draft_parse_failed` after four-tool gather; truncate oldest labs before draft if needed.
+- **Optional fhir_uuid** on ChartFact supported but loaders do not populate yet (PRD 06 citations).
+- **Compose image build locally:** Docker Hub / `docker-credential-desktop` can hang; host `uvicorn` + pytest used historically. DO/local should rebuild `copilot-sidecar` on deploy.
+- **DO overlay bind-mounts (not fork-built image):** Co-Pilot PHP under `/opt/openemr/overlay/`; needs sync for PRD 04 Chart/.
+- **DO schedule:** `CoPilot Demo%` appts need re-seed after day roll / rebuild.
 - Per-turn tool tickets (using correlation bind file store for MVP).
 - Durable disclosure DB (JSONL file stub under `sites/default/documents/`).
 - Citation popups deferred (PRD 06).
-- Dosing refusal now keyword-gated (`dose|dosing|dosage|titrate|how much|mg/kg`) — non-dosing meds turns ship facts without refusal; research-backed dosing still PRD 05.
+- Dosing refusal now keyword-gated (`dose|dosing|dosage|titrate|how much|mg/kg`) — research-backed dosing still PRD 05.
 - No rate limiting on `stream.php` (OpenRouter cost exposure) — production hardening, out of MVP scope.
 - **Dev compose still defaults** `COPILOT_INTERNAL_SECRET` to weak local value (production compose now requires env); rotate before public demo.
-- Entry-script / JS / SidecarClient automated tests still thin (verify/ACL/transcript covered in units).
-- **Picker:** recurring appts not expanded; provider-only schedule (no facility fallback); local demo rows `CoPilot Demo%` need re-seed after day roll / rebuild / DO.
-
-## QA hardening pass (2026-07-21, post-review)
-
-- Gateway timeout default 45→**120s** (stream.php + both compose files) — must cover route+draft (30s LLM budget each); `set_time_limit(0)` in stream.php (php.ini max_execution_time=60 would kill slow turns).
-- stream.php fails closed on `userId <= 0` (broken session) before binding.
-- Sidecar: dosing refusal only for dosing-like messages (not all `meds` routes); verify dedupes claims by locator; refuse node caps message at 4000 chars (mirrors gateway); `/ready` false when `OPENROUTER_API_KEY` missing.
-- JS client: system bubble when stream ends without done/error (was silent); 5s pid poll (skipped while streaming) syncs gate + shows patient-changed notice; removed dup JSDoc.
-- FileCorrelationBindStore sweeps expired bind files on every put.
-- Removed no-op `use Throwable;` in stream.php/tool_proxy.php (emitted PHP warning).
-- Tests updated+added: sidecar pytest 53 pass; ClinicalCopilot isolated PHPUnit 51 pass (2 env skips). DO redeploy needed to pick these up (overlay bind-mounts + sidecar rebuild).
+- Entry-script / JS / SidecarClient automated tests still thin (verify/ACL/transcript/Chart covered in units).
+- **Picker:** recurring appts not expanded; provider-only schedule (no facility fallback).
 
 ## Remaining / next
 
-1. Seed DO same-day appts for admin; stabilize DO draft parse → clinical → done
-2. PRD 04 chart services behind tool_proxy; then 05–07
-3. LangSmith + eval/narrative as thin follow-on
+1. DO redeploy overlay (Chart + ToolProxy) + sidecar recreate; smoke pid with labs/meds
+2. PRD 05 research tools (openFDA → DailyMed)
+3. PRD 06–07 citations / LangSmith thin follow-on
 
 ## Out of scope right now
 

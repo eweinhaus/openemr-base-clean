@@ -25,11 +25,13 @@
 - [x] **Patient schedule picker popup (2026-07-21):** blocking dialog over chat; `schedule.php` + `src/ClinicalCopilot/Schedule/`; Next / today list / Finder; Change patient; Jest 20 + ClinicalCopilot isolated 93 OK; local demo appts seeded.
 - [x] **Local OpenRouter Send smoke (2026-07-21):** model pin `anthropic/claude-haiku-4.5` (old `claude-3.5-haiku` → 404); credits funded (was 402); `stream.php` pid 2 → progress → clinical → done; UI confirmed working.
 - [x] **DO redeploy (2026-07-21 evening):** packaged overlay+sidecar; model pin on droplet; schedule API 200; unbound → `unbound_patient`; pid 6 Send → progress → `draft_parse_failed` (spine OK; full clinical reply not yet green on DO).
+- [x] **DO sync smoke (2026-07-22 UTC):** overlay+sidecar rebuild; timeout 120s; seeded today appts; pid 6 → progress → clinical → done.
+- [x] **PRD 04 chart tools (2026-07-21):** `src/ClinicalCopilot/Chart/` + `ChartToolDispatcher` → `ToolProxyService`; stubs removed; sidecar brief×4 parallel + partial/empty assemble; PHPUnit ClinicalCopilot 123 + pytest 70; local DB smoke pid 6/8.
 
 ## Remaining (MVP → Early)
 
-- [ ] DO: seed same-day appts + fix/stabilize draft parse → clinical → done
-- [ ] PRD 04–07 (real chart tools → research → citations/SSE polish → LangSmith stubs)
+- [ ] DO redeploy for PRD 04 (overlay Chart + sidecar tool rename); smoke rich patient
+- [ ] PRD 05–07 (research → citations/SSE polish → LangSmith stubs)
 - [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
 
@@ -37,8 +39,8 @@
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
 - **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
-- **DO draft_parse_failed** — OpenRouter path reaches draft on droplet but claim JSON parse can fail; local clinical→done still green
-- **DO schedule empty today** — picker needs seeded `openemr_postcalendar_events` for admin demo
+- **DO needs PRD 04 redeploy** before interview talk-track uses live chart facts (local already real)
+- **DO/local `CoPilot Demo%` appts** need re-seed after calendar day roll (UTC on droplet)
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source
@@ -47,6 +49,8 @@
 - Single-worker 2 GB host will not support meaningful concurrent load (accepted for interview demo)
 - Planning docs (`docs/ai-decision-guide.md`, `docs/directions.md`, `.cursor/`, `memory-bank/`, etc.) may still be local untracked until committed
 - Docker Hub pull / `docker-credential-desktop` can hang locally — blocked Compose build of `copilot-sidecar`; host Python stub used for PRD 02 smoke
+- **Synthea `form_clinical_notes` empty** — notes domain honest empty; optional seed deferred
+- **Uncached four-tool brief** may be slow; TTL cache deferred; watch `draft_parse_failed` under richer tool JSON
 
 ## Schedule reminder (from directions)
 

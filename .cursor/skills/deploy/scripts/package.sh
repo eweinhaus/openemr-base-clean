@@ -68,7 +68,7 @@ services:
       OE_PASS: pass
       COPILOT_INTERNAL_SECRET: "${COPILOT_INTERNAL_SECRET:-dev-copilot-secret-change-me}"
       COPILOT_SIDECAR_URL: "${COPILOT_SIDECAR_URL:-http://copilot-sidecar:8080}"
-      COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-45}"
+      COPILOT_GATEWAY_TIMEOUT_SECONDS: "${COPILOT_GATEWAY_TIMEOUT_SECONDS:-120}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -100,7 +100,7 @@ EOF
 cat > "$STAGE/.env.example" <<'EOF'
 COPILOT_INTERNAL_SECRET=dev-copilot-secret-change-me
 COPILOT_SIDECAR_URL=http://copilot-sidecar:8080
-COPILOT_GATEWAY_TIMEOUT_SECONDS=45
+COPILOT_GATEWAY_TIMEOUT_SECONDS=120
 COPILOT_GATEWAY_TOOL_URL=http://openemr/interface/ask_copilot/tool_proxy.php
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1

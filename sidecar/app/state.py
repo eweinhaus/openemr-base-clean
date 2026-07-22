@@ -29,6 +29,10 @@ class GraphState(TypedDict, total=False):
     transcript: list[Any]
     route: Route
     tool_results: list[dict[str, Any]]
+    # tool_name → stable gateway error code for per-domain unavailable assembly.
+    tool_domain_errors: dict[str, str]
+    # Tool names requested for this route (for empty/unavailable assembly).
+    requested_tools: list[str]
     draft_claims: Optional[DraftClaims]
     verified_claims: list[Claim]
     refusals: Annotated[list[Refusal], operator.add]

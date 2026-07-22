@@ -20,6 +20,11 @@ if (empty($_GET['site'])) {
 
 require_once("../globals.php");
 
+use OpenEMR\ClinicalCopilot\Chart\ChartToolDispatcher;
+use OpenEMR\ClinicalCopilot\Chart\LabsChartService;
+use OpenEMR\ClinicalCopilot\Chart\MedsChartService;
+use OpenEMR\ClinicalCopilot\Chart\NotesChartService;
+use OpenEMR\ClinicalCopilot\Chart\PatientContextService;
 use OpenEMR\ClinicalCopilot\Gateway\FileCorrelationBindStore;
 use OpenEMR\ClinicalCopilot\Gateway\ToolProxyService;
 use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
@@ -73,7 +78,13 @@ if (!is_dir($bindDir) && !mkdir($bindDir, 0775, true) && !is_dir($bindDir)) {
 try {
     $bindStore = new FileCorrelationBindStore($bindDir);
     $disclosureLog = new DisclosureLog($disclosurePath);
-    $service = new ToolProxyService($bindStore, $secret, $disclosureLog);
+    $chartDispatcher = new ChartToolDispatcher(
+        new PatientContextService(),
+        new LabsChartService(),
+        new MedsChartService(),
+        new NotesChartService(),
+    );
+    $service = new ToolProxyService($bindStore, $secret, $disclosureLog, $chartDispatcher);
     $result = $service->handle($body, $providedSecret, $correlationId);
 } catch (Throwable $e) {
     error_log('Ask Co-Pilot tool_proxy error: ' . $e->getMessage());

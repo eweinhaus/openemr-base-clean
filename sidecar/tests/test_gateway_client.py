@@ -23,7 +23,7 @@ TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
 
 FACTS_PAYLOAD: dict[str, Any] = {
     "ok": True,
-    "tool": "labs_stub",
+    "tool": "labs",
     "data": {
         "facts": [
             {
@@ -54,7 +54,7 @@ def test_call_tool_returns_facts_payload() -> None:
         assert request.headers[CORRELATION_HEADER] == "corr-123"
         body = json.loads(request.content)
         assert body == {
-            "tool": "labs_stub",
+            "tool": "labs",
             "args": {"limit": 5},
             "pid": 6,
             "user_id": 1,
@@ -63,7 +63,7 @@ def test_call_tool_returns_facts_payload() -> None:
         return httpx.Response(200, json=FACTS_PAYLOAD)
 
     client = _client_with_transport(httpx.MockTransport(handler))
-    result = client.call_tool("labs_stub", {"limit": 5}, 6, "corr-123", 1)
+    result = client.call_tool("labs", {"limit": 5}, 6, "corr-123", 1)
 
     assert result == FACTS_PAYLOAD
 
@@ -75,7 +75,7 @@ def test_call_tool_raises_gateway_auth_error_on_401() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayAuthError):
-        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
+        client.call_tool("labs", {}, 6, "corr-123", 1)
 
 
 def test_call_tool_raises_gateway_forbidden_error_on_403() -> None:
@@ -85,7 +85,7 @@ def test_call_tool_raises_gateway_forbidden_error_on_403() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayForbiddenError):
-        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
+        client.call_tool("labs", {}, 6, "corr-123", 1)
 
 
 def test_call_tool_raises_gateway_timeout_error() -> None:
@@ -95,7 +95,7 @@ def test_call_tool_raises_gateway_timeout_error() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayTimeoutError):
-        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
+        client.call_tool("labs", {}, 6, "corr-123", 1)
 
 
 def test_call_tool_raises_gateway_error_on_400() -> None:
@@ -115,4 +115,4 @@ def test_call_tool_raises_gateway_network_error() -> None:
     client = _client_with_transport(httpx.MockTransport(handler))
 
     with pytest.raises(GatewayNetworkError):
-        client.call_tool("labs_stub", {}, 6, "corr-123", 1)
+        client.call_tool("labs", {}, 6, "corr-123", 1)

@@ -30,7 +30,7 @@ Bind mounts into `openemr` container:
 | --- | --- | --- |
 | `COPILOT_INTERNAL_SECRET` | openemr + sidecar | Shared; required for gateway ↔ sidecar |
 | `COPILOT_SIDECAR_URL` | openemr | Default `http://copilot-sidecar:8080` |
-| `COPILOT_GATEWAY_TIMEOUT_SECONDS` | openemr | Demo often `45`–`120` |
+| `COPILOT_GATEWAY_TIMEOUT_SECONDS` | openemr | Default **120** (covers route+draft LLM budgets) |
 | `COPILOT_GATEWAY_TOOL_URL` | sidecar | `http://openemr/interface/ask_copilot/tool_proxy.php` |
 | `OPENROUTER_API_KEY` | sidecar | Required for live Haiku route/draft |
 | `OPENROUTER_BASE_URL` | sidecar | `https://openrouter.ai/api/v1` |

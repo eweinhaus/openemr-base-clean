@@ -14,20 +14,18 @@ declare(strict_types=1);
 
 namespace OpenEMR\ClinicalCopilot\Gateway;
 
+use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\Chart\ChartToolDispatcherInterface;
 use OpenEMR\ClinicalCopilot\Logging\DisclosureLog;
+use Throwable;
 
 final class ToolProxyService
 {
-    private const STUB_TOOLS = [
-        'patient_context_stub',
-        'labs_stub',
-        'meds_stub',
-    ];
-
     public function __construct(
         private readonly CorrelationBindStoreInterface $bindStore,
         private readonly string $internalSecret,
         private readonly ?DisclosureLog $disclosureLog = null,
+        private readonly ?ChartToolDispatcherInterface $chartDispatcher = null,
     ) {
     }
 
@@ -37,7 +35,16 @@ final class ToolProxyService
      * @return array{
      *     ok: bool,
      *     tool?: string,
-     *     data?: array{facts: list<array{text: string, table: string, id: string|int, excerpt: string}>},
+     *     data?: array{
+     *         facts: list<array{
+     *             text: string,
+     *             table: string,
+     *             id: string|int,
+     *             excerpt: string,
+     *             fhir_uuid?: string
+     *         }>,
+     *         meta?: array<string, mixed>
+     *     },
      *     error?: string
      * }
      */
@@ -101,10 +108,31 @@ final class ToolProxyService
             return ['ok' => false, 'error' => 'user_mismatch'];
         }
 
-        if (!in_array($tool, self::STUB_TOOLS, true)) {
+        if ($this->chartDispatcher === null) {
             $this->logResult(false, 'not_implemented', $pid, $userId, $correlationId, $tool);
 
             return ['ok' => false, 'error' => 'not_implemented'];
+        }
+
+        try {
+            // Always use bind-checked pid — never trust args.pid for chart reads.
+            $factSet = $this->chartDispatcher->dispatch($tool, $bind->pid);
+        } catch (InvalidArgumentException $e) {
+            if ($e->getMessage() === 'Unknown chart tool') {
+                $this->logResult(false, 'not_implemented', $pid, $userId, $correlationId, $tool);
+
+                return ['ok' => false, 'error' => 'not_implemented'];
+            }
+
+            error_log('Ask Co-Pilot chart tool invalid argument: ' . $e->getMessage());
+            $this->logResult(false, 'chart_error', $pid, $userId, $correlationId, $tool);
+
+            return ['ok' => false, 'error' => 'chart_error'];
+        } catch (Throwable $e) {
+            error_log('Ask Co-Pilot chart tool failed: ' . $e->getMessage());
+            $this->logResult(false, 'chart_error', $pid, $userId, $correlationId, $tool);
+
+            return ['ok' => false, 'error' => 'chart_error'];
         }
 
         $this->logResult(true, 'ok', $pid, $userId, $correlationId, $tool);
@@ -112,78 +140,8 @@ final class ToolProxyService
         return [
             'ok' => true,
             'tool' => $tool,
-            'data' => $this->stubToolData($tool),
+            'data' => $factSet->toArray(),
         ];
-    }
-
-    /**
-     * @return array{facts: list<array{text: string, table: string, id: string|int, excerpt: string}>}
-     */
-    private function stubToolData(string $tool): array
-    {
-        return match ($tool) {
-            'patient_context_stub' => [
-                'facts' => [
-                    [
-                        'text' => 'Active problem: Type 2 diabetes mellitus (E11.9)',
-                        'table' => 'lists',
-                        'id' => '101',
-                        'excerpt' => 'Problem list — onset 2019-03-14, active',
-                    ],
-                    [
-                        'text' => 'Allergy: Penicillin — rash',
-                        'table' => 'lists',
-                        'id' => '102',
-                        'excerpt' => 'Allergy list — severity moderate',
-                    ],
-                    [
-                        'text' => 'Active problem: Essential hypertension (I10)',
-                        'table' => 'lists',
-                        'id' => '103',
-                        'excerpt' => 'Problem list — onset 2017-08-02, active',
-                    ],
-                ],
-            ],
-            'labs_stub' => [
-                'facts' => [
-                    [
-                        'text' => 'Serum creatinine 1.1 mg/dL (2026-06-01)',
-                        'table' => 'procedure_result',
-                        'id' => '501',
-                        'excerpt' => 'CMP — within reference range',
-                    ],
-                    [
-                        'text' => 'HbA1c 7.2% (2026-05-15)',
-                        'table' => 'procedure_result',
-                        'id' => '502',
-                        'excerpt' => 'Glycemic control — above goal',
-                    ],
-                    [
-                        'text' => 'LDL cholesterol 118 mg/dL (2026-05-15)',
-                        'table' => 'procedure_result',
-                        'id' => '503',
-                        'excerpt' => 'Lipid panel — borderline high',
-                    ],
-                ],
-            ],
-            'meds_stub' => [
-                'facts' => [
-                    [
-                        'text' => 'Metformin 500 mg tablet — take one twice daily with meals',
-                        'table' => 'prescriptions',
-                        'id' => '201',
-                        'excerpt' => 'Active Rx — started 2020-01-10',
-                    ],
-                    [
-                        'text' => 'Lisinopril 10 mg tablet — take one daily',
-                        'table' => 'prescriptions',
-                        'id' => '202',
-                        'excerpt' => 'Active Rx — started 2018-11-03',
-                    ],
-                ],
-            ],
-            default => throw new \InvalidArgumentException('Unsupported stub tool: ' . $tool),
-        };
     }
 
     private function logResult(

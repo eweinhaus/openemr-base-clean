@@ -28,12 +28,20 @@ class ToolProxyServiceTest extends TestCase
 
     private FakeCorrelationBindStore $bindStore;
 
+    private FakeChartToolDispatcher $dispatcher;
+
     private ToolProxyService $service;
 
     protected function setUp(): void
     {
         $this->bindStore = new FakeCorrelationBindStore();
-        $this->service = new ToolProxyService($this->bindStore, self::INTERNAL_SECRET);
+        $this->dispatcher = FakeChartToolDispatcher::withSampleContextFacts();
+        $this->service = new ToolProxyService(
+            $this->bindStore,
+            self::INTERNAL_SECRET,
+            null,
+            $this->dispatcher,
+        );
     }
 
     public function testHandlePassesWhenSecretPidAndBindMatch(): void
@@ -43,7 +51,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -52,25 +60,24 @@ class ToolProxyServiceTest extends TestCase
         );
 
         $this->assertTrue($result['ok']);
-        $this->assertSame('patient_context_stub', $result['tool']);
+        $this->assertSame('patient_context', $result['tool']);
         $this->assertArrayHasKey('facts', $result['data']);
-        $this->assertCount(3, $result['data']['facts']);
-        $this->assertSame('lists', $result['data']['facts'][0]['table']);
-        $this->assertSame('101', $result['data']['facts'][0]['id']);
+        $this->assertCount(2, $result['data']['facts']);
+        $this->assertSame('form_encounter', $result['data']['facts'][0]['table']);
+        $this->assertSame('77', $result['data']['facts'][0]['id']);
         $this->assertSame('lists', $result['data']['facts'][1]['table']);
-        $this->assertSame('102', $result['data']['facts'][1]['id']);
-        $this->assertSame('lists', $result['data']['facts'][2]['table']);
-        $this->assertSame('103', $result['data']['facts'][2]['id']);
+        $this->assertSame('101', $result['data']['facts'][1]['id']);
+        $this->dispatcher->assertDispatched('patient_context', 100);
     }
 
-    public function testHandleReturnsLabsStubFactsWithLocators(): void
+    public function testHandleReturnsLabsFactsFromDispatcher(): void
     {
         $correlationId = 'abc123correlationid00000011';
         $this->bindStore->put($correlationId, 100, 7);
 
         $result = $this->service->handle(
             [
-                'tool' => 'labs_stub',
+                'tool' => 'labs',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -79,24 +86,20 @@ class ToolProxyServiceTest extends TestCase
         );
 
         $this->assertTrue($result['ok']);
-        $this->assertSame('labs_stub', $result['tool']);
-        $this->assertCount(3, $result['data']['facts']);
+        $this->assertSame('labs', $result['tool']);
+        $this->assertCount(1, $result['data']['facts']);
         $this->assertSame('procedure_result', $result['data']['facts'][0]['table']);
         $this->assertSame('501', $result['data']['facts'][0]['id']);
-        $this->assertSame('procedure_result', $result['data']['facts'][1]['table']);
-        $this->assertSame('502', $result['data']['facts'][1]['id']);
-        $this->assertSame('procedure_result', $result['data']['facts'][2]['table']);
-        $this->assertSame('503', $result['data']['facts'][2]['id']);
     }
 
-    public function testHandleReturnsMedsStubFactsWithLocators(): void
+    public function testHandleReturnsMedsFactsWithMeta(): void
     {
         $correlationId = 'abc123correlationid00000012';
         $this->bindStore->put($correlationId, 100, 7);
 
         $result = $this->service->handle(
             [
-                'tool' => 'meds_stub',
+                'tool' => 'meds',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -105,12 +108,72 @@ class ToolProxyServiceTest extends TestCase
         );
 
         $this->assertTrue($result['ok']);
-        $this->assertSame('meds_stub', $result['tool']);
-        $this->assertCount(2, $result['data']['facts']);
+        $this->assertSame('meds', $result['tool']);
+        $this->assertCount(1, $result['data']['facts']);
         $this->assertSame('prescriptions', $result['data']['facts'][0]['table']);
         $this->assertSame('201', $result['data']['facts'][0]['id']);
-        $this->assertSame('prescriptions', $result['data']['facts'][1]['table']);
-        $this->assertSame('202', $result['data']['facts'][1]['id']);
+        $this->assertSame(['active_med_count' => 1, 'allergy_count' => 0], $result['data']['meta']);
+    }
+
+    public function testHandleReturnsEmptyFactsAsSuccess(): void
+    {
+        $correlationId = 'abc123correlationid00000014';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'notes',
+                'pid' => 100,
+                'user_id' => 7,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('notes', $result['tool']);
+        $this->assertSame([], $result['data']['facts']);
+    }
+
+    public function testHandleUsesBoundPidNotBodyPidForDispatch(): void
+    {
+        $correlationId = 'abc123correlationid00000015';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'labs',
+                'pid' => 100,
+                'user_id' => 7,
+                'args' => ['pid' => 999],
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertTrue($result['ok']);
+        $this->dispatcher->assertDispatched('labs', 100);
+    }
+
+    public function testHandleReturnsChartErrorWhenDispatcherThrows(): void
+    {
+        $correlationId = 'abc123correlationid00000016';
+        $this->bindStore->put($correlationId, 100, 7);
+        $this->dispatcher->setThrow('labs', new RuntimeException('SQLSTATE boom'));
+
+        $result = $this->service->handle(
+            [
+                'tool' => 'labs',
+                'pid' => 100,
+                'user_id' => 7,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('chart_error', $result['error']);
+        $this->assertStringNotContainsString('SQLSTATE', json_encode($result, JSON_THROW_ON_ERROR));
     }
 
     public function testHandleFailsWhenSecretDoesNotMatch(): void
@@ -120,7 +183,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -139,7 +202,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 999,
                 'user_id' => 7,
             ],
@@ -155,7 +218,7 @@ class ToolProxyServiceTest extends TestCase
     {
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -177,7 +240,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -196,7 +259,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 55,
                 'user_id' => 3,
                 'correlation_id' => $correlationId,
@@ -206,7 +269,7 @@ class ToolProxyServiceTest extends TestCase
         );
 
         $this->assertTrue($result['ok']);
-        $this->assertSame('patient_context_stub', $result['tool']);
+        $this->assertSame('patient_context', $result['tool']);
     }
 
     public function testHandlePrefersCorrelationIdFromHeaderOverBody(): void
@@ -216,7 +279,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 42,
                 'user_id' => 1,
                 'correlation_id' => 'other-correlation-id',
@@ -236,13 +299,13 @@ class ToolProxyServiceTest extends TestCase
             'abc123correlationid00000007',
         );
         $missingPid = $this->service->handle(
-            ['tool' => 'patient_context_stub'],
+            ['tool' => 'patient_context'],
             self::INTERNAL_SECRET,
             'abc123correlationid00000008',
         );
         $missingCorrelation = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -265,7 +328,7 @@ class ToolProxyServiceTest extends TestCase
 
         $result = $this->service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 99,
             ],
@@ -296,6 +359,26 @@ class ToolProxyServiceTest extends TestCase
         $this->assertSame('not_implemented', $result['error']);
     }
 
+    public function testHandleReturnsNotImplementedWhenDispatcherMissing(): void
+    {
+        $service = new ToolProxyService($this->bindStore, self::INTERNAL_SECRET);
+        $correlationId = 'abc123correlationid00000017';
+        $this->bindStore->put($correlationId, 100, 7);
+
+        $result = $service->handle(
+            [
+                'tool' => 'labs',
+                'pid' => 100,
+                'user_id' => 7,
+            ],
+            self::INTERNAL_SECRET,
+            $correlationId,
+        );
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('not_implemented', $result['error']);
+    }
+
     public function testHandleWritesDisclosureLogOnPassAndFail(): void
     {
         $tempDir = sys_get_temp_dir() . '/tool-proxy-log-test-' . bin2hex(random_bytes(8));
@@ -305,14 +388,19 @@ class ToolProxyServiceTest extends TestCase
 
         $logPath = $tempDir . '/disclosure.jsonl';
         $disclosureLog = new DisclosureLog($logPath);
-        $service = new ToolProxyService($this->bindStore, self::INTERNAL_SECRET, $disclosureLog);
+        $service = new ToolProxyService(
+            $this->bindStore,
+            self::INTERNAL_SECRET,
+            $disclosureLog,
+            $this->dispatcher,
+        );
 
         $correlationId = 'abc123correlationid00000010';
         $this->bindStore->put($correlationId, 100, 7);
 
         $service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 100,
                 'user_id' => 7,
             ],
@@ -322,7 +410,7 @@ class ToolProxyServiceTest extends TestCase
 
         $service->handle(
             [
-                'tool' => 'patient_context_stub',
+                'tool' => 'patient_context',
                 'pid' => 999,
                 'user_id' => 7,
             ],
@@ -342,7 +430,7 @@ class ToolProxyServiceTest extends TestCase
         $this->assertSame('ok', $passLine['reason']);
         $this->assertSame($correlationId, $passLine['correlation_id']);
         $this->assertSame(100, $passLine['pid']);
-        $this->assertSame('patient_context_stub', $passLine['tool']);
+        $this->assertSame('patient_context', $passLine['tool']);
 
         $this->assertSame('tool_proxy', $failLine['event']);
         $this->assertFalse($failLine['pass']);

@@ -11,6 +11,18 @@ EMPTY_CLINICAL_MESSAGE = (
     "Not enough verified chart data to answer from the record."
 )
 
+# Physician-facing assembly copy (not verified claims — no fake locators).
+EMPTY_CONDITIONS = "No active conditions on file."
+EMPTY_LABS = "No recent labs on file."
+EMPTY_MEDS = "No active medications on file."
+EMPTY_ALLERGIES = "No allergies on file."
+EMPTY_NOTES = "No recent notes on file."
+
+UNAVAILABLE_PATIENT_CONTEXT = "Chart summary unavailable — try again."
+UNAVAILABLE_LABS = "Labs unavailable — try again."
+UNAVAILABLE_MEDS = "Medications unavailable — try again."
+UNAVAILABLE_NOTES = "Notes unavailable — try again."
+
 VALID_SOURCE_TYPES = frozenset({"chart", "note", "research"})
 
 
@@ -143,15 +155,143 @@ def filter_refusals(
     return filtered
 
 
-def assemble_clinical(verified: list[Claim], refusals: list[Refusal]) -> str:
-    """Join verified claim text and refusal messages into concise clinical prose."""
+def assemble_clinical(
+    verified: list[Claim],
+    refusals: list[Refusal],
+    *,
+    tool_results: list[dict[str, Any]] | None = None,
+    tool_domain_errors: dict[str, str] | None = None,
+    requested_tools: list[str] | None = None,
+) -> str:
+    """Join verified claim text, refusals, and empty/unavailable domain lines."""
+    domain_lines = build_domain_status_lines(
+        tool_results=tool_results or [],
+        tool_domain_errors=tool_domain_errors or {},
+        requested_tools=requested_tools or [],
+    )
     parts: list[str] = []
     if verified:
         parts.extend(claim.text for claim in verified)
-    else:
+    elif not domain_lines:
         parts.append(EMPTY_CLINICAL_MESSAGE)
     parts.extend(refusal.text for refusal in refusals if refusal.text)
+    parts.extend(domain_lines)
     return " ".join(parts)
+
+
+def build_domain_status_lines(
+    *,
+    tool_results: list[dict[str, Any]],
+    tool_domain_errors: dict[str, str],
+    requested_tools: list[str],
+) -> list[str]:
+    """Allowlisted empty/unavailable one-liners for requested chart domains."""
+    if not requested_tools:
+        return []
+
+    by_tool = _index_successful_tool_results(tool_results)
+    lines: list[str] = []
+    for tool_name in requested_tools:
+        if tool_name in tool_domain_errors:
+            unavailable = _unavailable_line(tool_name)
+            if unavailable:
+                lines.append(unavailable)
+            continue
+        result = by_tool.get(tool_name)
+        if result is None:
+            continue
+        lines.extend(_empty_lines_for_tool(tool_name, result))
+    return lines
+
+
+def _index_successful_tool_results(
+    tool_results: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for result in tool_results:
+        if not isinstance(result, dict) or not result.get("ok"):
+            continue
+        tool = result.get("tool")
+        if isinstance(tool, str) and tool:
+            indexed[tool] = result
+    return indexed
+
+
+def _unavailable_line(tool_name: str) -> str | None:
+    if tool_name == "patient_context":
+        return UNAVAILABLE_PATIENT_CONTEXT
+    if tool_name == "labs":
+        return UNAVAILABLE_LABS
+    if tool_name == "meds":
+        return UNAVAILABLE_MEDS
+    if tool_name == "notes":
+        return UNAVAILABLE_NOTES
+    return None
+
+
+def _empty_lines_for_tool(tool_name: str, result: dict[str, Any]) -> list[str]:
+    data = result.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    facts = data.get("facts")
+    if not isinstance(facts, list):
+        facts = []
+
+    if tool_name == "patient_context":
+        has_problem = any(
+            isinstance(fact, dict) and fact.get("table") == "lists" for fact in facts
+        )
+        return [] if has_problem else [EMPTY_CONDITIONS]
+
+    if tool_name == "labs":
+        has_lab = any(
+            isinstance(fact, dict) and fact.get("table") == "procedure_result"
+            for fact in facts
+        )
+        return [] if has_lab else [EMPTY_LABS]
+
+    if tool_name == "notes":
+        has_note = any(
+            isinstance(fact, dict) and fact.get("table") == "form_clinical_notes"
+            for fact in facts
+        )
+        return [] if has_note else [EMPTY_NOTES]
+
+    if tool_name == "meds":
+        return _meds_empty_lines(data, facts)
+
+    return []
+
+
+def _meds_empty_lines(data: dict[str, Any], facts: list[Any]) -> list[str]:
+    meta = data.get("meta")
+    lines: list[str] = []
+    if isinstance(meta, dict) and (
+        "active_med_count" in meta and "allergy_count" in meta
+    ):
+        try:
+            active_med_count = int(meta["active_med_count"])
+            allergy_count = int(meta["allergy_count"])
+        except (TypeError, ValueError):
+            active_med_count = 0
+            allergy_count = 0
+        if active_med_count == 0:
+            lines.append(EMPTY_MEDS)
+        if allergy_count == 0:
+            lines.append(EMPTY_ALLERGIES)
+        return lines
+
+    has_rx = any(
+        isinstance(fact, dict) and fact.get("table") == "prescriptions" for fact in facts
+    )
+    has_allergy = any(
+        isinstance(fact, dict) and fact.get("table") == "lists" for fact in facts
+    )
+    if not has_rx:
+        lines.append(EMPTY_MEDS)
+    if not has_allergy:
+        lines.append(EMPTY_ALLERGIES)
+    return lines
 
 
 def _load_json_object(raw: str) -> dict[str, Any]:
