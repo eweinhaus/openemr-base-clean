@@ -2,13 +2,11 @@
 
 ## Current focus
 
-**PRD 05 implemented locally (2026-07-21):** `sidecar/app/research/` (openFDA → DailyMed) + verify/assemble/tools wiring. Sidecar pytest **126** green. Manual UI smoke (pid 6 simvastatin / pid 2 lisinopril) still needs a rebuilt `copilot-sidecar` image (Docker Hub builds have been flaky locally).
+**PRD 05 on DO (2026-07-21 evening):** overlay Chart + research sidecar redeployed to https://142.93.255.212/. Bound pid **6** dosing ask → progress (`Looking up label information…`) → label-backed simvastatin clinical → `done` (no `no_research`). OpenRouter **set**; `OPENFDA_API_KEY` empty (optional). Module active; mounts OK.
 
-**PRD 04 chart tools shipped locally:** Real PHP chart readers behind `tool_proxy`; stubs removed; brief×4 parallel.
+**PRD 04+05 code on `origin/main`:** commit `31ab4cf`. Sidecar pytest **126** green locally.
 
-**DO:** Needs overlay + sidecar redeploy for PRD 04 **and** 05 (batchable). Interview talk-track needs live chart + label-backed dosing on droplet.
-
-**Next:** Recreate local sidecar → manual PRD 05 smoke; then DO redeploy 04+05; then PRD 06 citations.
+**Next:** Optional local sidecar rebuild; fuller UI smoke (pid 2 uncertain / off-chart amoxicillin); PRD 06 citations.
 
 ## PRD 05 decisions (locked — implemented)
 
@@ -129,20 +127,20 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **Draft parse under rich tools:** watch `draft_parse_failed`; truncate oldest labs if needed.
 - **Optional fhir_uuid** on ChartFact not populated yet (PRD 06).
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
-- **DO overlay:** needs sync for PRD 04 Chart/ + PRD 05 sidecar recreate.
+- **DO overlay:** synced for PRD 04 Chart/ + PRD 05 sidecar (2026-07-21 evening).
 - **DO schedule:** `CoPilot Demo%` re-seed after day roll.
 - Per-turn tool tickets; durable disclosure DB; citation popups (PRD 06).
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
 - No rate limiting on `stream.php`.
 - **Dev compose** weak default `COPILOT_INTERNAL_SECRET`.
 - **Picker:** non-recurring today only; provider-scoped.
-- **Manual PRD 05 UI smoke** pending sidecar image recreate.
+- **Manual PRD 05 UI smoke** — gateway bind-seeded SSE OK on DO; Ask Co-Pilot click-path + pid 2/amoxicillin optional.
 
 ## Remaining / next
 
-1. Rebuild/recreate local `copilot-sidecar` → manual smoke pid 6 / pid 2 / off-chart amoxicillin
-2. DO redeploy PRD 04 + 05; smoke rich patient + dosing
-3. PRD 06–07 citations / LangSmith thin follow-on
+1. Optional fuller DO/local UI smoke (pid 2 uncertain RxNorm; off-chart amoxicillin not-on-list)
+2. PRD 06–07 citations / LangSmith thin follow-on
+3. Demo video + interview narrative polish
 
 ## Out of scope right now
 

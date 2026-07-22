@@ -28,12 +28,12 @@
 - [x] **DO sync smoke (2026-07-22 UTC):** overlay+sidecar rebuild; timeout 120s; seeded today appts; pid 6 → progress → clinical → done.
 - [x] **PRD 04 chart tools (2026-07-21):** `src/ClinicalCopilot/Chart/` + `ChartToolDispatcher` → `ToolProxyService`; stubs removed; sidecar brief×4 parallel + partial/empty assemble; PHPUnit ClinicalCopilot 123 + pytest 70; local DB smoke pid 6/8.
 - [x] **PRD 05 written (2026-07-21):** `docs/PRDs/05-research-tools.md` — locks + H1–H17 invariants; conflict skipped; off-chart + not-on-list.
-- [x] **PRD 05 research tools (2026-07-21):** `sidecar/app/research/` (dosing/scrub/resolve/client/extract); tools gate meds-only; verify keeps `source_type=research`; conditional `no_research`; assemble not-on-list + disclaimer; optional `OPENFDA_API_KEY`; sidecar pytest **126**; PHP/`tool_proxy` unchanged. Manual UI smoke pending sidecar rebuild.
+- [x] **PRD 05 research tools (2026-07-21):** `sidecar/app/research/` (dosing/scrub/resolve/client/extract); tools gate meds-only; verify keeps `source_type=research`; conditional `no_research`; assemble not-on-list + disclaimer; optional `OPENFDA_API_KEY`; sidecar pytest **126**; PHP/`tool_proxy` unchanged.
+- [x] **DO redeploy PRD 04+05 (2026-07-21):** overlay Chart + research sidecar rebuild on https://142.93.255.212/; module active; OpenRouter set; bind-seeded pid 6 dosing SSE → progress (incl. label lookup) → clinical label text → done.
 
 ## Remaining (MVP → Early)
 
-- [ ] Local/DO sidecar recreate + manual PRD 05 smoke (pid 6 simvastatin hit; pid 2 lisinopril no-HTTP refuse; off-chart amoxicillin not-on-list)
-- [ ] DO redeploy for PRD 04 + 05 (overlay Chart + sidecar); smoke rich patient
+- [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] PRD 06–07 (citations/SSE polish → LangSmith stubs)
 - [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
 - [ ] Demo video + cost analysis (submission) — interview narrative prioritized
@@ -42,21 +42,21 @@
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
 - **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
-- **DO needs PRD 04+05 redeploy** before interview talk-track uses live chart + label dosing (local code ready; image recreate pending)
 - **DO/local `CoPilot Demo%` appts** need re-seed after calendar day roll (UTC on droplet)
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source
 - Droplet `importRandomPatients … false` only stores CCDA documents (known script caveat: non-dev mode broken) — use `--isDev=true` for real patient rows
 - Missing-RxNorm demo seeds: local Susan Underwood (**pid 2**, Lisinopril); DO Vincenzo126 Kemmer137 (pid 6, Turmeric free-text). **Local pid 8 is allergies + coded Rx — not missing-RxNorm.**
-- UC-3 dosing happy-path candidate: local pid **6** simvastatin RxNorm `312961` (metformin is fixture-only)
+- UC-3 dosing happy-path: local pid **6** simvastatin RxNorm `312961`; DO smoke used off-chart/named **simvastatin** on pid 6 and still returned label-backed dose (not-on-list may apply depending on chart meds)
 - **Chart meds facts omit RxCUI when present** — research uses scrubbed display/generic term (MVP OK)
 - Label **conflict UX deferred** (MVP fallback-only)
 - Single-worker 2 GB host will not support meaningful concurrent load (accepted for interview demo)
-- Planning docs (`docs/ai-decision-guide.md`, `docs/directions.md`, `.cursor/`, `memory-bank/`, etc.) may still be local untracked until committed
-- Docker Hub pull / `docker-credential-desktop` can hang locally — blocked Compose build of `copilot-sidecar`
+- Planning docs may still be local untracked until committed
+- Docker Hub pull / `docker-credential-desktop` can hang locally — prefer build sidecar **on the droplet**
 - **Synthea `form_clinical_notes` empty** — notes domain honest empty; optional seed deferred
 - **Uncached four-tool brief** may be slow; TTL cache deferred; watch `draft_parse_failed` under richer tool JSON
+- **DO `OPENFDA_API_KEY` empty** — optional; unauthenticated openFDA worked for smoke
 
 ## Schedule reminder (from directions)
 
