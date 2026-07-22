@@ -2,13 +2,9 @@
 
 ## Current focus
 
-**PRD 06 coded (2026-07-22):** Citations + hybrid SSE polish landed locally. Sidecar emits `clinical` `{text,segments}` → `citation` `{citations}` → `done`; Ask Co-Pilot buffers both, trailing **Source** → in-pane popup; clinical-ish progress. Automated: sidecar pytest **137**, Jest ask-copilot **31**.
+**PRD 06 on DO (2026-07-22):** Commit `58eb115` pushed + redeployed to https://142.93.255.212/. Overlay cite UI + sidecar rebuild. Bind-seeded pid **6** dosing SSE → progress (`Pulling chart…` / `Checking medications…` / `Looking up label information…`) → `clinical`+`segments` → `citation` (research `source_type`, DailyMed url) → `done`. Module active; OpenRouter **set**. Login HTTP 200.
 
-**Not yet:** Manual UC-1/UC-3 UI smoke; DO overlay+sidecar redeploy for PRD 06.
-
-**PRD 05 still on DO** (2026-07-21 evening): https://142.93.255.212/ — label-backed dosing OK; citations UI **not** on droplet until redeploy.
-
-**Next:** Manual citation smoke (local pid 6 brief + simvastatin; pid 2 lisinopril refuse); DO redeploy; then PRD 07 (LangSmith thin).
+**Next:** Optional Ask Co-Pilot click-path UI smoke (Source popup); then PRD 07 (LangSmith thin).
 
 ## PRD 06 decisions (locked — implemented)
 
@@ -168,22 +164,21 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **`fhir_uuid` / `retrieved_at` on citations** — omitted/null in PRD 06; populate later.
 - **Historical transcript citation re-hydrate** — MVP OK to show plain prior turns.
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
-- **DO overlay:** still PRD 04+05 until PRD 06 JS/CSS + sidecar rebuild.
+- **DO overlay:** synced for PRD 06 citations (2026-07-22) — JS/CSS + sidecar.
 - **DO schedule:** `CoPilot Demo%` re-seed after day roll.
 - Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07).
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
 - No rate limiting on `stream.php`.
 - **Dev compose** weak default `COPILOT_INTERNAL_SECRET`.
 - **Picker:** non-recurring today only; provider-scoped.
-- **Manual PRD 06 UI smoke** — pending (pid 6 ≥2 Source; research Open label; pid 2 no fake research Source).
-- **Manual PRD 05 UI smoke** — gateway bind-seeded SSE OK on DO; Ask Co-Pilot click-path + pid 2/amoxicillin optional.
+- **Manual PRD 06 Ask Co-Pilot click-path** — SSE citation batch verified on DO; Source popup click-path optional.
+- **Manual PRD 05 UI smoke** — optional pid 2/amoxicillin.
 
 ## Remaining / next
 
-1. Manual PRD 06 smoke (local) + DO redeploy overlay/sidecar
+1. Optional Ask Co-Pilot Source popup click-path smoke on DO
 2. Write + implement PRD 07 (LangSmith redacted stubs + health/ready polish)
-3. Optional fuller PRD 05 UI smoke; batch DO before interview
-4. Demo video + interview narrative polish
+3. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
 
 ## Out of scope right now
 
