@@ -36,9 +36,9 @@ Other clinical roles (nurse, ED, hospitalist) explicitly out of scope for MVP.
 - First-class OpenEMR **tab** (same shell as Calendar / Messages / Dashboard) — not a floating widget
 - Empty chat at start (auto-brief later optional); thread stays until tab closed
 - No patient selected → **blocking schedule popup** over chat (next appointment + today's list + Finder search); never auto-select; Change patient when already bound
-- Source-backed facts as **hyperlinks** → in-pane source popup; stay in chat
-- Hybrid streaming: progress early; clinical text only after verification
-- Concise answers; depth via follow-ups (typical: brief + 1–2 follow-ups)
+- Source-backed facts: trailing **Source** control → in-pane popup (stay in chat); research may offer allowlisted Open label (new tab)
+- Hybrid streaming: progress early; clinical text only after verification; citation batch with/after clinical (PRD 06)
+- Concise answers (claim lines scannable); depth via follow-ups (typical: brief + 1–2 follow-ups)
 
 ## Research / safety product rules (locked)
 

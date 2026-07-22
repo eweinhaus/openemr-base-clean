@@ -16,5 +16,5 @@ alwaysApply: true
 - Ambiguity / shortcuts / cut order / physician UX / escalation: `docs/ai-decision-guide.md` (under ARCHITECTURE). Engineering guesses OK; clinical claims = verified+cited, labeled unverified, or refuse. Fake only non-spine work; note debt in Memory Bank. Keep shipping spine; batch DO fixes before interview. ~90s physician budget (post-cache); link every verified claim; clinical-ish progress (`Pulling labs…`).
 - Public deploy: https://142.93.255.212/ (`admin`/`pass`). SSH: `ssh -i ~/.ssh/id_ed25519_openemr root@142.93.255.212`. Stack: `/opt/openemr`.
 - Git: `origin` = `eweinhaus/openemr-base-clean`, `upstream` = `Gauntlet-HQ/openemr-base-clean`.
-- Next: implement PRD 05 (`docs/PRDs/05-research-tools.md`); DO redeploy for PRD 04 (+05). Read `memory-bank/` at session start; use decision guide when stuck.
+- Next: manual PRD 06 smoke + DO redeploy; then PRD 07 LangSmith thin. PRD 06 citations coded locally. Read `memory-bank/` at session start; use decision guide when stuck.
 - Builder: mid-level SWE; PRD/plan carries mental models; don’t assume FHIR/SMART/SSE/OpenEMR fluency. Interview MVP > rubric / production polish.

@@ -2,7 +2,8 @@
  * Ask Co-Pilot iframe client.
  *
  * Reads session pid via top.getSessionValue, gates unbound patients, POSTs
- * messages to stream.php, and parses hybrid SSE (progress / clinical / done / error).
+ * messages to stream.php, and parses hybrid SSE (progress / clinical / citation /
+ * done / error). Clinical turns buffer until citation arrives (or timeout).
  * All user/model text is inserted via textContent only.
  */
 (function () {
@@ -28,12 +29,52 @@
     var pickerListEl = document.getElementById('acp-picker-list');
     var pickerSearchBtn = document.getElementById('acp-picker-search');
     var pickerCancelBtn = document.getElementById('acp-picker-cancel');
+    var citeEl = document.getElementById('acp-cite');
+    var citeBackdropEl = document.getElementById('acp-cite-backdrop');
+    var citeBodyEl = document.getElementById('acp-cite-body');
+    var citeOpenEl = document.getElementById('acp-cite-open');
+    var citeCloseBtn = document.getElementById('acp-cite-close');
 
     // Blocking patient picker state. Mode 'gate' = unbound (non-dismissible);
     // mode 'change' = physician-initiated switch (cancelable); null = closed.
     /** @type {'gate'|'change'|null} */
     var pickerMode = null;
     var pickerBusy = false;
+
+    /** Citation dialog open + Source button to restore focus to (H12). */
+    var citeOpen = false;
+    /** @type {HTMLElement|null} */
+    var citeReturnFocusEl = null;
+
+    // Allowlisted research label hosts for the Open label href (H7).
+    var ALLOWED_CITE_HOSTS = {
+        'dailymed.nlm.nih.gov': true,
+        'www.dailymed.nlm.nih.gov': true,
+        'api.fda.gov': true,
+        'www.api.fda.gov': true
+    };
+
+    /**
+     * True only for https URLs on DailyMed / openFDA hosts.
+     *
+     * @param {string|null|undefined} url
+     * @returns {boolean}
+     */
+    function isAllowlistedHttpsUrl(url) {
+        if (url == null || typeof url !== 'string' || url === '') {
+            return false;
+        }
+        try {
+            var parsed = new URL(url);
+            if (parsed.protocol !== 'https:') {
+                return false;
+            }
+            var host = String(parsed.hostname || '').toLowerCase();
+            return Object.prototype.hasOwnProperty.call(ALLOWED_CITE_HOSTS, host);
+        } catch (err) {
+            return false;
+        }
+    }
 
     /**
      * Normalize session pid from top.getSessionValue / set_pt.php.
@@ -178,6 +219,200 @@
     }
 
     /**
+     * Append a cite-field row (label + value) via textContent only.
+     *
+     * @param {HTMLElement} parent
+     * @param {string} label
+     * @param {string} value
+     */
+    function appendCiteRow(parent, label, value) {
+        if (value == null || String(value) === '') {
+            return;
+        }
+        var row = document.createElement('div');
+        row.className = 'ask-copilot-cite-row';
+        var lab = document.createElement('span');
+        lab.className = 'ask-copilot-cite-label';
+        lab.textContent = label;
+        var val = document.createElement('span');
+        val.className = 'ask-copilot-cite-value';
+        val.textContent = String(value);
+        row.appendChild(lab);
+        row.appendChild(val);
+        parent.appendChild(row);
+    }
+
+    /**
+     * Build citation_id → citation map from a batch list.
+     *
+     * @param {Array<object>|null|undefined} list
+     * @returns {Object<string, object>}
+     */
+    function citationMapFromList(list) {
+        var map = {};
+        if (!Array.isArray(list)) {
+            return map;
+        }
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            if (c && c.citation_id != null && String(c.citation_id) !== '') {
+                map[String(c.citation_id)] = c;
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Render an assistant turn: one block per segment; claim segments with a
+     * known citation_id get a trailing Source control (H1/H2/orphan rule).
+     *
+     * @param {Array<{kind?: string, text?: string, citation_id?: string}>} segments
+     * @param {Object<string, object>} citationMap
+     */
+    function renderAssistantTurn(segments, citationMap) {
+        if (!messagesEl) {
+            return;
+        }
+        var bubble = document.createElement('div');
+        bubble.className = 'ask-copilot-bubble ask-copilot-bubble-assistant';
+        var segs = Array.isArray(segments) ? segments : [];
+        var map = citationMap || {};
+
+        for (var i = 0; i < segs.length; i++) {
+            var seg = segs[i] || {};
+            var line = document.createElement('div');
+            line.className = 'ask-copilot-segment';
+
+            var textSpan = document.createElement('span');
+            textSpan.className = 'ask-copilot-segment-text';
+            textSpan.textContent = seg.text == null ? '' : String(seg.text);
+            line.appendChild(textSpan);
+
+            var citeId =
+                seg.citation_id != null && String(seg.citation_id) !== ''
+                    ? String(seg.citation_id)
+                    : '';
+            if (seg.kind === 'claim' && citeId && map[citeId]) {
+                var srcBtn = document.createElement('button');
+                srcBtn.type = 'button';
+                srcBtn.className = 'btn btn-link btn-sm ask-copilot-source';
+                srcBtn.setAttribute('data-cite-id', citeId);
+                srcBtn.textContent = strings.sourceLabel || 'Source';
+                (function (citation, btn) {
+                    btn.addEventListener('click', function () {
+                        openCitation(citation, btn);
+                    });
+                })(map[citeId], srcBtn);
+                line.appendChild(srcBtn);
+            }
+
+            bubble.appendChild(line);
+        }
+
+        messagesEl.appendChild(bubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    /**
+     * Open the in-pane citation dialog. Mutually exclusive with the picker (H11).
+     * Gate mode wins when unbound — refuse opening cite over the gate.
+     *
+     * @param {object} citation
+     * @param {HTMLElement|null} [returnFocusEl]
+     */
+    function openCitation(citation, returnFocusEl) {
+        if (!citeEl || !citeBackdropEl || !citeBodyEl || !citation) {
+            return;
+        }
+        if (pickerMode === 'gate') {
+            return;
+        }
+        if (pickerMode !== null) {
+            closePicker();
+        }
+
+        citeReturnFocusEl = returnFocusEl || null;
+        citeBodyEl.textContent = '';
+
+        appendCiteRow(
+            citeBodyEl,
+            'source_type',
+            citation.source_type == null ? '' : String(citation.source_type)
+        );
+        appendCiteRow(
+            citeBodyEl,
+            'title',
+            citation.title == null ? '' : String(citation.title)
+        );
+
+        var excerpt =
+            citation.excerpt == null ? '' : String(citation.excerpt);
+        var locator = citation.locator || {};
+        var table = locator.table == null ? '' : String(locator.table);
+        var locId = locator.id == null ? '' : String(locator.id);
+        if (excerpt) {
+            appendCiteRow(citeBodyEl, 'excerpt', excerpt);
+        } else if (table || locId) {
+            var prefix =
+                citation.source_type === 'research'
+                    ? strings.researchLocator || 'Research locator:'
+                    : strings.chartLocator || 'Chart locator:';
+            appendCiteRow(
+                citeBodyEl,
+                'locator',
+                prefix + ' ' + table + (locId ? ' #' + locId : '')
+            );
+        }
+        if (table) {
+            appendCiteRow(citeBodyEl, 'table', table);
+        }
+        if (locId) {
+            appendCiteRow(citeBodyEl, 'id', locId);
+        }
+
+        var url = locator.url == null ? '' : String(locator.url);
+        if (citeOpenEl) {
+            if (isAllowlistedHttpsUrl(url)) {
+                citeOpenEl.setAttribute('href', url);
+                citeOpenEl.classList.remove('d-none');
+            } else {
+                citeOpenEl.setAttribute('href', '#');
+                citeOpenEl.classList.add('d-none');
+            }
+        }
+
+        citeBackdropEl.classList.remove('d-none');
+        citeEl.classList.remove('d-none');
+        citeOpen = true;
+        if (typeof citeEl.focus === 'function') {
+            citeEl.focus();
+        }
+    }
+
+    function closeCitation() {
+        if (!citeEl || !citeBackdropEl) {
+            citeOpen = false;
+            citeReturnFocusEl = null;
+            return;
+        }
+        citeOpen = false;
+        citeBackdropEl.classList.add('d-none');
+        citeEl.classList.add('d-none');
+        if (citeBodyEl) {
+            citeBodyEl.textContent = '';
+        }
+        if (citeOpenEl) {
+            citeOpenEl.setAttribute('href', '#');
+            citeOpenEl.classList.add('d-none');
+        }
+        var returnEl = citeReturnFocusEl;
+        citeReturnFocusEl = null;
+        if (returnEl && typeof returnEl.focus === 'function') {
+            returnEl.focus();
+        }
+    }
+
+    /**
      * Format an SSE/network failure for the system bubble.
      * Includes stable code + correlation id for debugging (no exception dumps).
      *
@@ -210,6 +445,7 @@
             messagesEl.textContent = '';
         }
         setProgress('');
+        closeCitation();
     }
 
     /**
@@ -274,6 +510,8 @@
         if (pickerMode !== null) {
             return;
         }
+        // H11: citation dialog and picker are mutually exclusive.
+        closeCitation();
         pickerMode = mode;
         pickerBusy = false;
         pickerBackdropEl.classList.remove('d-none');
@@ -599,6 +837,75 @@
         }
     }
 
+    /** Light-touch focus trap for the citation dialog. */
+    function trapCiteFocus(evt) {
+        if (!citeOpen || evt.key !== 'Tab' || !citeEl) {
+            return;
+        }
+        var focusable = citeEl.querySelectorAll(
+            'button:not([disabled]), a[href]:not(.d-none)'
+        );
+        if (focusable.length === 0) {
+            evt.preventDefault();
+            return;
+        }
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        var active = document.activeElement;
+        if (evt.shiftKey && (active === first || active === citeEl)) {
+            evt.preventDefault();
+            last.focus();
+        } else if (!evt.shiftKey && active === last) {
+            evt.preventDefault();
+            first.focus();
+        }
+    }
+
+    /**
+     * Dispatch a parsed SSE event to the matching handler.
+     *
+     * @param {string} evt
+     * @param {object} data
+     * @param {{onProgress?: Function, onClinical?: Function, onCitation?: Function, onDone?: Function, onError?: Function}} handlers
+     */
+    function dispatchSseEvent(evt, data, handlers) {
+        data = data || {};
+        if (evt === 'progress') {
+            if (typeof handlers.onProgress === 'function') {
+                handlers.onProgress(data.message || '');
+            }
+        } else if (evt === 'clinical') {
+            if (typeof handlers.onClinical === 'function') {
+                handlers.onClinical({
+                    text: data.text || '',
+                    segments: Array.isArray(data.segments) ? data.segments : []
+                });
+            }
+        } else if (evt === 'citation') {
+            if (typeof handlers.onCitation === 'function') {
+                handlers.onCitation({
+                    citations: Array.isArray(data.citations) ? data.citations : []
+                });
+            }
+        } else if (evt === 'done') {
+            if (typeof handlers.onDone === 'function') {
+                handlers.onDone(data.correlation_id || '');
+            }
+        } else if (evt === 'error') {
+            if (typeof handlers.onError === 'function') {
+                handlers.onError(
+                    data.message ||
+                        (strings.streamFail || 'Something went wrong. Try again.'),
+                    {
+                        code: data.code || '',
+                        correlation_id: data.correlation_id || '',
+                        detail: data.detail || ''
+                    }
+                );
+            }
+        }
+    }
+
     /**
      * Parse one SSE frame (event + data lines) into {event, data}.
      *
@@ -634,7 +941,7 @@
      * Consume a fetch Response body as SSE over ReadableStream.
      *
      * @param {Response} response
-     * @param {{onProgress?: Function, onClinical?: Function, onDone?: Function, onError?: Function}} handlers
+     * @param {{onProgress?: Function, onClinical?: Function, onCitation?: Function, onDone?: Function, onError?: Function}} handlers
      * @returns {Promise<void>}
      */
     async function consumeSse(response, handlers) {
@@ -666,33 +973,7 @@
                 if (!parsed) {
                     continue;
                 }
-                var evt = parsed.event;
-                var data = parsed.data || {};
-
-                if (evt === 'progress') {
-                    if (typeof handlers.onProgress === 'function') {
-                        handlers.onProgress(data.message || '');
-                    }
-                } else if (evt === 'clinical') {
-                    if (typeof handlers.onClinical === 'function') {
-                        handlers.onClinical(data.text || '');
-                    }
-                } else if (evt === 'done') {
-                    if (typeof handlers.onDone === 'function') {
-                        handlers.onDone(data.correlation_id || '');
-                    }
-                } else if (evt === 'error') {
-                    if (typeof handlers.onError === 'function') {
-                        handlers.onError(
-                            data.message || (strings.streamFail || 'Something went wrong. Try again.'),
-                            {
-                                code: data.code || '',
-                                correlation_id: data.correlation_id || '',
-                                detail: data.detail || ''
-                            }
-                        );
-                    }
-                }
+                dispatchSseEvent(parsed.event, parsed.data, handlers);
             }
         }
 
@@ -701,23 +982,7 @@
         if (trailing && trailing.charAt(0) !== ':') {
             var last = parseSseFrame(trailing);
             if (last) {
-                if (last.event === 'progress' && typeof handlers.onProgress === 'function') {
-                    handlers.onProgress((last.data && last.data.message) || '');
-                } else if (last.event === 'clinical' && typeof handlers.onClinical === 'function') {
-                    handlers.onClinical((last.data && last.data.text) || '');
-                } else if (last.event === 'done' && typeof handlers.onDone === 'function') {
-                    handlers.onDone((last.data && last.data.correlation_id) || '');
-                } else if (last.event === 'error' && typeof handlers.onError === 'function') {
-                    handlers.onError(
-                        (last.data && last.data.message) ||
-                            (strings.streamFail || 'Something went wrong. Try again.'),
-                        {
-                            code: (last.data && last.data.code) || '',
-                            correlation_id: (last.data && last.data.correlation_id) || '',
-                            detail: (last.data && last.data.detail) || ''
-                        }
-                    );
-                }
+                dispatchSseEvent(last.event, last.data, handlers);
             }
         }
     }
@@ -810,6 +1075,64 @@
         var gotTerminal = false;
         var patientSwitch = false;
 
+        // Buffer clinical until citation arrives (or timeout / done) — PRD 06.
+        /** @type {{text: string, segments: Array<object>}|null} */
+        var pendingClinical = null;
+        /** @type {Array<object>|null} null = not yet received */
+        var pendingCitations = null;
+        var clinicalRendered = false;
+        var citationTimer = null;
+        var citationTimeoutMs =
+            Number(config.citationTimeoutMs) > 0
+                ? Number(config.citationTimeoutMs)
+                : 2500;
+
+        function clearClinicalBuffer() {
+            pendingClinical = null;
+            pendingCitations = null;
+            if (citationTimer !== null) {
+                clearTimeout(citationTimer);
+                citationTimer = null;
+            }
+        }
+
+        function flushClinicalRender() {
+            if (clinicalRendered || !pendingClinical) {
+                return;
+            }
+            clinicalRendered = true;
+            if (citationTimer !== null) {
+                clearTimeout(citationTimer);
+                citationTimer = null;
+            }
+            setProgress('');
+            var text = pendingClinical.text || '';
+            var segments = pendingClinical.segments;
+            var hasCitationBatch = pendingCitations !== null;
+            var map = hasCitationBatch
+                ? citationMapFromList(pendingCitations)
+                : null;
+
+            if (
+                hasCitationBatch &&
+                Array.isArray(segments) &&
+                segments.length > 0
+            ) {
+                renderAssistantTurn(segments, map);
+            } else {
+                appendBubble('assistant', text);
+            }
+            pushTranscript('assistant', text);
+            pendingClinical = null;
+            pendingCitations = null;
+        }
+
+        function tryRenderBuffered() {
+            if (pendingClinical && pendingCitations !== null) {
+                flushClinicalRender();
+            }
+        }
+
         try {
             var response = await fetch(config.streamUrl, {
                 method: 'POST',
@@ -833,17 +1156,38 @@
                 onProgress: function (msg) {
                     setProgress(msg);
                 },
-                onClinical: function (text) {
-                    setProgress('');
-                    appendBubble('assistant', text);
-                    pushTranscript('assistant', text);
+                onClinical: function (payload) {
+                    pendingClinical = {
+                        text: (payload && payload.text) || '',
+                        segments:
+                            payload && Array.isArray(payload.segments)
+                                ? payload.segments
+                                : []
+                    };
+                    if (citationTimer !== null) {
+                        clearTimeout(citationTimer);
+                    }
+                    citationTimer = setTimeout(function () {
+                        flushClinicalRender();
+                    }, citationTimeoutMs);
+                    tryRenderBuffered();
+                },
+                onCitation: function (data) {
+                    pendingCitations =
+                        data && Array.isArray(data.citations)
+                            ? data.citations
+                            : [];
+                    tryRenderBuffered();
                 },
                 onDone: function () {
                     gotTerminal = true;
+                    flushClinicalRender();
                     setProgress('');
                 },
                 onError: function (msg, meta) {
                     gotTerminal = true;
+                    clinicalRendered = true;
+                    clearClinicalBuffer();
                     setProgress('');
                     var errMsg = formatErrorText(msg, meta);
                     if (
@@ -862,7 +1206,11 @@
                 }
             });
 
-            if (!gotTerminal) {
+            // Stream ended without done/error but clinical may still be pending
+            // (e.g. hung connection after clinical) — flush plain if needed.
+            flushClinicalRender();
+
+            if (!gotTerminal && !clinicalRendered) {
                 // Stream ended without done/error (dropped connection, gateway
                 // timeout) — tell the user instead of failing silently.
                 setProgress('');
@@ -874,12 +1222,17 @@
                         { code: 'stream_incomplete' }
                     )
                 );
+            } else if (!gotTerminal && clinicalRendered) {
+                // Clinical painted via timeout; stream never sent done — still OK.
+                setProgress('');
             }
             if (patientSwitch) {
                 // Drop the user turn that was rejected after patient switch.
                 transcript = [];
             }
         } catch (err) {
+            clinicalRendered = true;
+            clearClinicalBuffer();
             setProgress('');
             var catchMsg =
                 err && err.message
@@ -937,11 +1290,26 @@
                 }
             });
         }
+        if (citeCloseBtn) {
+            citeCloseBtn.addEventListener('click', function () {
+                closeCitation();
+            });
+        }
+        if (citeBackdropEl) {
+            citeBackdropEl.addEventListener('click', function () {
+                closeCitation();
+            });
+        }
         document.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Escape' && citeOpen) {
+                closeCitation();
+                return;
+            }
             if (evt.key === 'Escape' && pickerMode === 'change' && !pickerBusy) {
                 closePicker();
                 return;
             }
+            trapCiteFocus(evt);
             trapPickerFocus(evt);
         });
     }
@@ -958,13 +1326,18 @@
         loadSchedule: loadSchedule,
         selectPatient: selectPatient,
         pushTranscript: pushTranscript,
+        isAllowlistedHttpsUrl: isAllowlistedHttpsUrl,
+        renderAssistantTurn: renderAssistantTurn,
+        openCitation: openCitation,
+        closeCitation: closeCitation,
         getState: function () {
             return {
                 boundPid: boundPid,
                 pickerMode: pickerMode,
                 pickerBusy: pickerBusy,
                 streaming: streaming,
-                transcriptLength: transcript.length
+                transcriptLength: transcript.length,
+                citeOpen: citeOpen
             };
         }
     };

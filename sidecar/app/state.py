@@ -37,6 +37,10 @@ class GraphState(TypedDict, total=False):
     verified_claims: list[Claim]
     refusals: Annotated[list[Refusal], operator.add]
     clinical_text: str
+    # Ordered clinical segments (claim + assembly) for SSE; paired with citations (PRD 06).
+    clinical_segments: list[dict[str, Any]]
+    # Citation batch for SSE; citation_id values match claim segments (H3).
+    citations: list[dict[str, Any]]
     # Stable non-PHI error code (see errors.py); truthy short-circuits the graph to emit.
     error: str
     progress_messages: Annotated[list[str], operator.add]

@@ -88,7 +88,11 @@ def iter_chat_events(
             return
 
         clinical_text = final_state.get("clinical_text", "")
-        yield ("clinical", {"text": clinical_text})
+        segments = final_state.get("clinical_segments") or []
+        citations = final_state.get("citations") or []
+        yield ("clinical", {"text": clinical_text, "segments": segments})
+        # Always emit citation after successful clinical (even citations: []).
+        yield ("citation", {"citations": citations})
         yield ("done", {"correlation_id": correlation_id})
     except Exception:
         # Never abort mid-stream without an error frame (keeps hybrid SSE contract).

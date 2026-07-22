@@ -6,6 +6,7 @@ import logging
 
 from ..errors import ERROR_LLM_UNAVAILABLE
 from ..llm import LlmError, Route, route_message, set_correlation_id
+from ..progress import PROGRESS_PULLING_CHART
 from ..state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -33,5 +34,6 @@ def route_node(state: GraphState) -> dict[str, object]:
 
     return {
         "route": route,
-        "progress_messages": ["Routing…"],
+        # Early clinical-ish wait copy while tools run (H13 — no "Routing…").
+        "progress_messages": [PROGRESS_PULLING_CHART],
     }

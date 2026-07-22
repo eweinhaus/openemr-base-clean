@@ -225,3 +225,97 @@
 .ask-copilot-composer .btn {
     flex: 0 0 auto;
 }
+
+/* Citation Source dialog — same overlay feel as the patient picker. */
+.ask-copilot-cite-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(33, 37, 41, 0.5);
+}
+
+.ask-copilot-cite {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    width: min(26rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 2rem));
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+    transform: translate(-50%, -50%);
+}
+
+.ask-copilot-cite-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.ask-copilot-cite-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.ask-copilot-cite-row {
+    margin-bottom: 0.5rem;
+}
+
+.ask-copilot-cite-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #6c757d;
+}
+
+.ask-copilot-cite-value {
+    display: block;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: #212529;
+}
+
+.ask-copilot-cite-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.ask-copilot-cite-footer #acp-cite-open {
+    margin-right: auto;
+    padding-left: 0;
+}
+
+.ask-copilot-segment {
+    margin-bottom: 0.25rem;
+}
+
+.ask-copilot-segment:last-child {
+    margin-bottom: 0;
+}
+
+.ask-copilot-segment-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.ask-copilot-source {
+    margin-left: 0.35rem;
+    padding: 0;
+    vertical-align: baseline;
+    font-size: 0.8125rem;
+    line-height: inherit;
+}

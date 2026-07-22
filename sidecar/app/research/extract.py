@@ -224,8 +224,46 @@ def _is_mixed_ir_er_without_hint(
     return True
 
 
+def dailymed_setid_url(set_id: str) -> str:
+    """Public DailyMed drugInfo URL for a SPL set id (citation Open label)."""
+    return _DAILYMED_SETID_URL.format(set_id=set_id)
+
+
+def derive_research_title_and_url(
+    excerpt: str | None,
+    *,
+    set_id: str | None = None,
+) -> tuple[str, str | None]:
+    """Derive popup title + https URL from research excerpt and/or set_id.
+
+    Prefer ``"{title} — {https://…}"`` in the excerpt; otherwise fall back to
+    a DailyMed URL built from ``set_id`` when present.
+    """
+    text = (excerpt or "").strip()
+    title = ""
+    url: str | None = None
+
+    if " — " in text:
+        left, right = text.split(" — ", 1)
+        right = right.strip()
+        if right.startswith("https://"):
+            title = left.strip()
+            url = right
+        else:
+            title = text
+    elif text.startswith("https://"):
+        url = text
+    else:
+        title = text
+
+    if url is None and isinstance(set_id, str) and set_id.strip():
+        url = dailymed_setid_url(set_id.strip())
+
+    return title, url
+
+
 def _build_excerpt(set_id: str, title: str) -> str:
-    url = _DAILYMED_SETID_URL.format(set_id=set_id)
+    url = dailymed_setid_url(set_id)
     if title:
         return f"{title} — {url}"
     return url

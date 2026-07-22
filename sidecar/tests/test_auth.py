@@ -61,7 +61,11 @@ def test_chat_refuses_unbound_pid_without_placeholder_clinical() -> None:
             assert response.headers["content-type"].startswith("text/event-stream")
             body = "".join(response.iter_text())
 
-    assert f'event: clinical\ndata: {{"text": "{UNBOUND_MESSAGE}"}}' in body
+    assert (
+        f'event: clinical\ndata: {{"text": "{UNBOUND_MESSAGE}", "segments": []}}'
+        in body
+    )
+    assert 'event: citation\ndata: {"citations": []}' in body
     assert 'event: done\ndata: {"correlation_id": "corr-123"}' in body
     assert "Stub sidecar:" not in body
     assert "skeleton online" not in body.lower()

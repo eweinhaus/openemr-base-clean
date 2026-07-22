@@ -50,9 +50,17 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 ## Co-Pilot UX patterns (locked)
 
 - Empty chat start; concise; follow-ups for depth; thread until tab closed
-- Claims → hyperlink → **in-pane** source popup
 - Prefer omit / “not on file” / “research unavailable” over guess
-- **Hybrid SSE:** progress early; **no** unverified clinical text (no warning-label workaround)
+- **Hybrid SSE:** progress early; clinical after verify; then citation batch; **no** unverified clinical text
+- **Citations (PRD 06 coded):** trailing **Source** on verified claims only → `#acp-cite` in-pane dialog; assembly unlinked; claim newlines; DOM-only XSS
+- Dialog chrome: reuse patient-picker overlay pattern (`role="dialog"` + backdrop) — not Bootstrap modal/popover
+
+## Hybrid SSE contract (PRD 06 coded)
+
+- Success: `progress*` → `clinical` `{text, segments}` → `citation` `{citations}` (always, even `[]`) → `done`
+- Error: unchanged (no clinical/citation required)
+- Client buffers clinical+citation before paint (timeout/`done` → plain text); gateway is byte pass-through
+- Progress: clinical-ish only (`Pulling chart…` / labs / meds; `Looking up label information…`) — no toolchain jargon
 
 ## Integration seams
 
@@ -94,6 +102,23 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - `/ready` must not probe FDA/DailyMed
 - Optional `OPENFDA_API_KEY`; chart facts omit RxCUI when present → query by scrubbed name
 - Canonical PRD: `docs/PRDs/05-research-tools.md` (H1–H17 invariants)
+
+## Citations pattern (PRD 06 — implemented)
+
+- `claims.build_clinical_payload` + `build_citation_records`; `emit_node` → state `clinical_text` / `clinical_segments` / `citations`
+- SSE success: `progress*` → `clinical` `{text,segments}` → `citation` `{citations}` (always, even `[]`) → `done`
+- Emit citations **only** from verified claims; `citation_id` `c1…n` paired to claim segments; assembly unlinked
+- UI: buffer clinical+citation; `renderAssistantTurn`; `#acp-cite` dialog; allowlisted Open label (`dailymed.nlm.nih.gov`, `api.fda.gov`)
+- Progress allowlist in `sidecar/app/progress.py` (`Pulling chart…` / labs / meds); research keeps `Looking up label information…`
+- `fhir_uuid`/`retrieved_at` deferred null; historical transcript re-hydrate deferred
+- Canonical PRD: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13)
+
+## Observability pattern (PRD 07 — planned thin)
+
+- **LangGraph** = agent workflow; **LangSmith** = redacted traces (not interchangeable)
+- App owns `correlation_id` + PHI disclosure/verification log (JSONL stub OK; durable DB deferred)
+- `/health` alive; `/ready` = gateway + OpenRouter (never probe FDA); unready → fail closed on agent path
+- Stubs OK for interview — no LangSmith dashboard polish required
 
 ## Deploy pattern
 

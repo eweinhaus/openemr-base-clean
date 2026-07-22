@@ -35,11 +35,11 @@ HTTPS self-signed on bare IP. No DB TLS / MFA on public demo (documented gaps).
 | Topology | Hybrid: OpenEMR session-proxy gateway + LangGraph sidecar |
 | LLM | OpenRouter · Haiku everywhere (MVP); pin `anthropic/claude-haiku-4.5` (not retired `claude-3.5-haiku`) |
 | Framework | LangGraph (Python) |
-| Observability | LangSmith (redacted) + correlation IDs + disclosure log |
+| Observability | Correlation ID + disclosure stub now; LangSmith redacted in PRD 07 (thin; no dashboard polish) |
 | Chart access | PHP services via gateway (pid-scoped); FHIR phase 2 |
 | Research | openFDA → DailyMed fallback; no PHI; `sidecar/app/research/` (PRD 05 landed); optional `OPENFDA_API_KEY` |
-| Stream | Hybrid SSE (progress → verified clinical) |
-| State | Open-tab transcript until closed |
+| Stream | Hybrid SSE (progress → clinical `{text,segments}` → citation batch → done) |
+| State | Open-tab transcript until closed (plain text resend; citations display-only) |
 | Deploy | Same 2 GB host; single sidecar worker |
 
 ## Git
@@ -65,4 +65,5 @@ Branch: `main` → `origin/main`.
 - `docs/ai-decision-guide.md` — how agents choose under ambiguity (under ARCHITECTURE; local/untracked for now)
 - `docs/architecture-overview.md` — diagrams companion
 - `docs/architecture-tech-primer.md` — study guide (decisions now locked)
+- `docs/PRDs/01`–`06` — vertical-slice PRDs (`06-citations-hybrid-sse.md` planned; 07 not written)
 - `CLAUDE.md` / `CONTRIBUTING.md` — OpenEMR conventions

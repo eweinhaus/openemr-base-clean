@@ -99,6 +99,31 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
         </div>
     </div>
 
+    <div id="acp-cite-backdrop" class="ask-copilot-cite-backdrop d-none"></div>
+    <div
+        id="acp-cite"
+        class="ask-copilot-cite d-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="acp-cite-title"
+        tabindex="-1"
+    >
+        <h3 id="acp-cite-title" class="ask-copilot-cite-title"><?php echo xlt('Source'); ?></h3>
+        <div id="acp-cite-body" class="ask-copilot-cite-body"></div>
+        <div class="ask-copilot-cite-footer">
+            <a
+                id="acp-cite-open"
+                class="btn btn-link btn-sm d-none"
+                target="_blank"
+                rel="noopener noreferrer"
+                href="#"
+            ><?php echo xlt('Open label'); ?></a>
+            <button type="button" id="acp-cite-close" class="btn btn-secondary btn-sm">
+                <?php echo xlt('Close'); ?>
+            </button>
+        </div>
+    </div>
+
     <script>
         window.askCopilotConfig = {
             webroot: <?php echo js_escape($webroot); ?>,
@@ -123,7 +148,12 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
                 bindTimeout: <?php echo xlj('Could not confirm the patient selection. Try again.'); ?>,
                 useFinder: <?php echo xlj('Select the patient from the search tab.'); ?>,
                 confirmSwitch: <?php echo xlj('Switching patients clears this chat. Continue?'); ?>,
-                dobPrefix: <?php echo xlj('DOB'); ?>
+                dobPrefix: <?php echo xlj('DOB'); ?>,
+                sourceLabel: <?php echo xlj('Source'); ?>,
+                openLabel: <?php echo xlj('Open label'); ?>,
+                citeClose: <?php echo xlj('Close'); ?>,
+                chartLocator: <?php echo xlj('Chart locator:'); ?>,
+                researchLocator: <?php echo xlj('Research locator:'); ?>
             }
         };
     </script>

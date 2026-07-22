@@ -1,8 +1,8 @@
-"""Assemble verified clinical text node."""
+"""Assemble verified clinical text + citation batch node."""
 
 from __future__ import annotations
 
-from ..claims import assemble_clinical
+from ..claims import build_citation_records, build_clinical_payload
 from ..nodes.tools import ROUTE_TOOLS
 from ..state import GraphState
 
@@ -20,12 +20,18 @@ def emit_node(state: GraphState) -> dict[str, object]:
         route = state.get("route", "brief")
         requested = list(ROUTE_TOOLS.get(route, ["patient_context"]))
 
+    # Same verified list + tool kwargs so citation_id (c1…n) matches segments (H3).
+    payload = build_clinical_payload(
+        verified,
+        refusals,
+        tool_results=tool_results,
+        tool_domain_errors=tool_domain_errors,
+        requested_tools=requested,
+    )
+    citations = build_citation_records(verified, tool_results=tool_results)
+
     return {
-        "clinical_text": assemble_clinical(
-            verified,
-            refusals,
-            tool_results=tool_results,
-            tool_domain_errors=tool_domain_errors,
-            requested_tools=requested,
-        )
+        "clinical_text": payload["text"],
+        "clinical_segments": payload["segments"],
+        "citations": citations,
     }

@@ -311,7 +311,7 @@ def test_meds_non_dosing_skips_research(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert "error" not in result
     assert calls == []
-    assert result["progress_messages"] == ["Fetching chart…"]
+    assert result["progress_messages"] == ["Checking medications…"]
     assert RESEARCH_PROGRESS_MESSAGE not in result["progress_messages"]
     assert all(r["tool"] != RESEARCH_TOOL_NAME for r in result["tool_results"])
 
@@ -398,7 +398,7 @@ def test_meds_dosing_fetch_hit_appends_research_label(
 
     assert "error" not in result
     assert RESEARCH_PROGRESS_MESSAGE in result["progress_messages"]
-    assert result["progress_messages"][0] == "Fetching chart…"
+    assert result["progress_messages"][0] == "Checking medications…"
     research = [r for r in result["tool_results"] if r["tool"] == RESEARCH_TOOL_NAME]
     assert len(research) == 1
     assert research[0]["ok"] is True

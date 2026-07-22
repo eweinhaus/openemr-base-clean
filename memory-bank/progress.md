@@ -30,13 +30,15 @@
 - [x] **PRD 05 written (2026-07-21):** `docs/PRDs/05-research-tools.md` — locks + H1–H17 invariants; conflict skipped; off-chart + not-on-list.
 - [x] **PRD 05 research tools (2026-07-21):** `sidecar/app/research/` (dosing/scrub/resolve/client/extract); tools gate meds-only; verify keeps `source_type=research`; conditional `no_research`; assemble not-on-list + disclaimer; optional `OPENFDA_API_KEY`; sidecar pytest **126**; PHP/`tool_proxy` unchanged.
 - [x] **DO redeploy PRD 04+05 (2026-07-21):** overlay Chart + research sidecar rebuild on https://142.93.255.212/; module active; OpenRouter set; bind-seeded pid 6 dosing SSE → progress (incl. label lookup) → clinical label text → done.
+- [x] **PRD 06 written (2026-07-22):** `docs/PRDs/06-citations-hybrid-sse.md` — segments + batch `citation` SSE, trailing Source, in-pane popup, H1–H13.
+- [x] **PRD 06 citations + hybrid SSE (2026-07-22):** `build_clinical_payload` / `build_citation_records`; emit/stream `clinical`→`citation`→`done`; progress polish; Ask Co-Pilot Source + `#acp-cite` dialog + URL allowlist; sidecar pytest **137**; Jest ask-copilot **31**. Manual UI smoke + DO redeploy still pending.
 
 ## Remaining (MVP → Early)
 
+- [ ] Manual PRD 06 UI smoke (pid 6 brief ≥2 Source; simvastatin research Open label; pid 2 no fake research Source) + DO redeploy
+- [ ] Write + implement PRD 07 (LangSmith redacted stubs; polish `/health`/`/ready`; join disclosure log on correlation ID — thin OK)
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
-- [ ] PRD 06–07 (citations/SSE polish → LangSmith stubs)
-- [ ] LangSmith + correlation IDs end-to-end, eval suite (thin OK for interview)
-- [ ] Demo video + cost analysis (submission) — interview narrative prioritized
+- [ ] Eval suite thin + demo video / cost analysis — interview narrative prioritized
 
 ## Known issues
 
@@ -57,6 +59,8 @@
 - **Synthea `form_clinical_notes` empty** — notes domain honest empty; optional seed deferred
 - **Uncached four-tool brief** may be slow; TTL cache deferred; watch `draft_parse_failed` under richer tool JSON
 - **DO `OPENFDA_API_KEY` empty** — optional; unauthenticated openFDA worked for smoke
+- **PRD 06 coded locally** — DO still on pre-citation overlay until redeploy; manual Source/popup smoke pending
+- **PRD 07 not written** — `/health`/`/ready` + disclosure stub exist; LangSmith wiring still TODO
 
 ## Schedule reminder (from directions)
 

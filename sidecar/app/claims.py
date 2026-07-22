@@ -9,9 +9,11 @@ from typing import Any
 
 from .research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
+    RESEARCH_TABLES,
     RESEARCH_TOOL_NAME,
     format_not_on_list,
 )
+from .research.extract import derive_research_title_and_url
 
 EMPTY_CLINICAL_MESSAGE = (
     "Not enough verified chart data to answer from the record."
@@ -30,6 +32,17 @@ UNAVAILABLE_MEDS = "Medications unavailable — try again."
 UNAVAILABLE_NOTES = "Notes unavailable — try again."
 
 VALID_SOURCE_TYPES = frozenset({"chart", "note", "research"})
+
+# Short human labels for chart/note citation titles when excerpt is empty.
+_TABLE_FRIENDLY_TITLES: dict[str, str] = {
+    "procedure_result": "Lab result",
+    "prescriptions": "Active medication",
+    "form_clinical_notes": "Clinical note",
+    "form_encounter": "Encounter",
+    "lists": "Problem or allergy",
+    "openfda": "Drug label",
+    "dailymed": "Drug label",
+}
 
 
 class ClaimsParseError(ValueError):
@@ -171,27 +184,172 @@ def assemble_clinical(
     requested_tools: list[str] | None = None,
 ) -> str:
     """Join claims → not-on-list → disclaimer? → refusals → domain lines."""
+    return build_clinical_payload(
+        verified,
+        refusals,
+        tool_results=tool_results,
+        tool_domain_errors=tool_domain_errors,
+        requested_tools=requested_tools,
+    )["text"]
+
+
+def build_clinical_payload(
+    verified: list[Claim],
+    refusals: list[Refusal],
+    *,
+    tool_results: list[dict[str, Any]] | None = None,
+    tool_domain_errors: dict[str, str] | None = None,
+    requested_tools: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build flat clinical ``text`` plus ordered ``segments`` (PRD 06).
+
+    Claim segments carry ``citation_id`` (``c1``…``cN``). Assembly / refusal /
+    disclaimer / empty-domain / ``EMPTY_CLINICAL`` lines are ``kind: assembly``
+    without ``citation_id`` (H1–H2, H9).
+    """
     results = tool_results or []
-    domain_lines = build_domain_status_lines(
+    assembly_lines = _assembly_lines(
+        refusals=refusals,
         tool_results=results,
         tool_domain_errors=tool_domain_errors or {},
         requested_tools=requested_tools or [],
     )
-    not_on_list_lines = _not_on_list_lines(results)
+
+    segments: list[dict[str, Any]] = []
+    for index, claim in enumerate(verified, start=1):
+        segments.append(
+            {
+                "kind": "claim",
+                "text": claim.text,
+                "citation_id": f"c{index}",
+            }
+        )
+    for line in assembly_lines:
+        segments.append({"kind": "assembly", "text": line})
+
+    if not segments:
+        segments = [{"kind": "assembly", "text": EMPTY_CLINICAL_MESSAGE}]
+
+    text_parts = [claim.text for claim in verified] + assembly_lines
+    if not text_parts:
+        text_parts = [EMPTY_CLINICAL_MESSAGE]
+
+    return {
+        "text": "\n".join(text_parts),
+        "segments": segments,
+    }
+
+
+def build_citation_records(
+    verified: list[Claim],
+    tool_results: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """One citation record per verified claim; ids match clinical segments (H3).
+
+    Never invents ``fhir_uuid`` / ``retrieved_at``. Keeps claim ``source_type``
+    (H10). Research title/url from excerpt ``" — "`` split or DailyMed set_id.
+    """
+    results = tool_results or []
+    set_ids = _research_set_ids_by_locator(results)
+    citations: list[dict[str, Any]] = []
+    for index, claim in enumerate(verified, start=1):
+        excerpt = claim.excerpt if isinstance(claim.excerpt, str) else ""
+        excerpt = excerpt.strip() if excerpt else ""
+        title, url = _citation_title_and_url(claim, excerpt, set_ids)
+        citations.append(
+            {
+                "citation_id": f"c{index}",
+                "source_type": claim.source_type,
+                "title": title,
+                "excerpt": excerpt,
+                "locator": {
+                    "table": claim.locator.table,
+                    "id": claim.locator.id,
+                    "url": url,
+                },
+            }
+        )
+    return citations
+
+
+def _assembly_lines(
+    *,
+    refusals: list[Refusal],
+    tool_results: list[dict[str, Any]],
+    tool_domain_errors: dict[str, str],
+    requested_tools: list[str],
+) -> list[str]:
+    """Physician-facing assembly copy (never cited)."""
+    domain_lines = build_domain_status_lines(
+        tool_results=tool_results,
+        tool_domain_errors=tool_domain_errors,
+        requested_tools=requested_tools,
+    )
+    not_on_list_lines = _not_on_list_lines(tool_results)
     refusal_texts = [refusal.text for refusal in refusals if refusal.text]
 
     parts: list[str] = []
-    if verified:
-        parts.extend(claim.text for claim in verified)
     parts.extend(not_on_list_lines)
-    if _should_include_disclaimer(results, refusals):
+    if _should_include_disclaimer(tool_results, refusals):
         parts.append(DECISION_SUPPORT_DISCLAIMER)
     parts.extend(refusal_texts)
     parts.extend(domain_lines)
+    return parts
 
-    if not parts:
-        return EMPTY_CLINICAL_MESSAGE
-    return " ".join(parts)
+
+def _citation_title_and_url(
+    claim: Claim,
+    excerpt: str,
+    set_ids: dict[tuple[str, str], str],
+) -> tuple[str, str | None]:
+    if claim.source_type == "research" or claim.locator.table in RESEARCH_TABLES:
+        set_id = set_ids.get((claim.locator.table, claim.locator.id))
+        title, url = derive_research_title_and_url(excerpt or None, set_id=set_id)
+        if not title:
+            title = _TABLE_FRIENDLY_TITLES.get(claim.locator.table, "Drug label")
+        return title, url
+
+    if excerpt:
+        first_line = excerpt.split("\n", 1)[0].strip()
+        if first_line:
+            return first_line, None
+    title = _TABLE_FRIENDLY_TITLES.get(claim.locator.table, "Chart source")
+    return title, None
+
+
+def _research_set_ids_by_locator(
+    tool_results: list[dict[str, Any]],
+) -> dict[tuple[str, str], str]:
+    """Map research fact (table, id) → meta.set_id when present."""
+    mapping: dict[tuple[str, str], str] = {}
+    for result in tool_results:
+        if not isinstance(result, dict) or not result.get("ok"):
+            continue
+        if result.get("tool") != RESEARCH_TOOL_NAME:
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        meta = data.get("meta")
+        set_id: str | None = None
+        if isinstance(meta, dict):
+            raw = meta.get("set_id")
+            if isinstance(raw, str) and raw.strip():
+                set_id = raw.strip()
+        if not set_id:
+            continue
+        facts = data.get("facts")
+        if not isinstance(facts, list):
+            continue
+        for fact in facts:
+            if not isinstance(fact, dict):
+                continue
+            table = fact.get("table")
+            fact_id = fact.get("id")
+            if not table or fact_id is None:
+                continue
+            mapping[(str(table), str(fact_id))] = set_id
+    return mapping
 
 
 def _not_on_list_lines(tool_results: list[dict[str, Any]]) -> list[str]:

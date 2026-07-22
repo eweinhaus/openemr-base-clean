@@ -176,20 +176,66 @@ def test_happy_path_labs_progress_clinical_done(
 
     names = [name for name, _ in events]
     assert names.index("progress") < names.index("clinical")
+    assert names.index("clinical") < names.index("citation")
+    assert names.index("citation") < names.index("done")
     assert names.count("clinical") == 1
+    assert names.count("citation") == 1
     assert names[-1] == "done"
 
     progress = [data for name, data in events if name == "progress"]
-    assert any("Routing" in msg["message"] for msg in progress)
-    assert any("Fetching chart" in msg["message"] for msg in progress)
+    assert any("Pulling chart" in msg["message"] for msg in progress)
+    assert any("Pulling labs" in msg["message"] for msg in progress)
 
     clinical = next(data for name, data in events if name == "clinical")
     assert "Serum creatinine 1.1 mg/dL" in clinical["text"]
     assert "Stub sidecar:" not in clinical["text"]
     assert "skeleton online" not in clinical["text"].lower()
+    assert "segments" in clinical
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assembly_segs = [s for s in clinical["segments"] if s.get("kind") == "assembly"]
+    assert claim_segs
+    assert all("citation_id" in s for s in claim_segs)
+    assert all("citation_id" not in s for s in assembly_segs)
+
+    citation = next(data for name, data in events if name == "citation")
+    assert "citations" in citation
+    assert len(citation["citations"]) == len(claim_segs)
+    claim_ids = {s["citation_id"] for s in claim_segs}
+    cite_ids = {c["citation_id"] for c in citation["citations"]}
+    assert claim_ids == cite_ids
 
     done = next(data for name, data in events if name == "done")
     assert done["correlation_id"] == "corr-int-1"
+
+
+def test_empty_verified_claims_still_emits_citation_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Zero verified claims → clinical assembly text + citation {citations: []}."""
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: INVENTED_LABS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_RESULT,
+    )
+
+    events = _stream_chat(monkeypatch)
+    names = [name for name, _ in events]
+
+    assert names.index("clinical") < names.index("citation")
+    assert names.index("citation") < names.index("done")
+
+    clinical = next(data for name, data in events if name == "clinical")
+    citation = next(data for name, data in events if name == "citation")
+
+    assert EMPTY_CLINICAL_MESSAGE in clinical["text"]
+    assert clinical["segments"]
+    assert all(s.get("kind") == "assembly" for s in clinical["segments"])
+    assert all("citation_id" not in s for s in clinical["segments"])
+    assert citation["citations"] == []
 
 
 def test_invented_locator_dropped_from_clinical(
@@ -342,11 +388,25 @@ def test_dosing_research_hit_omits_refusal(
         _chat_payload(message="What is the typical adult dose of metformin?"),
     )
     clinical = next(data for name, data in events if name == "clinical")
+    citation = next(data for name, data in events if name == "citation")
     progress = [data["message"] for name, data in events if name == "progress"]
+    names = [name for name, _ in events]
 
+    assert names.index("clinical") < names.index("citation")
+    assert names.index("citation") < names.index("done")
     assert "Usual adult dose is 500 mg twice daily" in clinical["text"]
     assert DOSING_REFUSAL_TEXT not in clinical["text"]
     assert any("Looking up label information" in p for p in progress)
+
+    research_cites = [
+        c for c in citation["citations"] if c.get("source_type") == "research"
+    ]
+    assert len(research_cites) >= 1
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assert all("citation_id" in s for s in claim_segs)
+    research_ids = {c["citation_id"] for c in research_cites}
+    claim_ids = {s["citation_id"] for s in claim_segs}
+    assert research_ids <= claim_ids
 
 
 def test_brief_route_never_looks_up_label(

@@ -26,6 +26,7 @@ from ..gateway_client import (
     GatewayTimeoutError,
 )
 from ..llm import Route
+from ..progress import chart_progress_for_route
 from ..research import (
     RESEARCH_PROGRESS_MESSAGE,
     ResolveStatus,
@@ -268,7 +269,7 @@ def make_tools_node(gateway: GatewayClient) -> Callable[[GraphState], dict[str, 
                 "requested_tools": tool_names,
             }
 
-        progress_messages = ["Fetching chart…"]
+        progress_messages = [chart_progress_for_route(route)]
         _maybe_append_research(
             route=route,
             message=message,
