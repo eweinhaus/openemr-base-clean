@@ -184,10 +184,80 @@ def test_chart_citation_keeps_source_type_and_locator_no_invented_fields() -> No
         "id": "42",
         "url": None,
     }
+    # Without tool_results, optional fields are omitted (not invented).
     assert "fhir_uuid" not in cite
     assert "retrieved_at" not in cite
     assert "fhir_uuid" not in cite["locator"]
     assert "retrieved_at" not in cite["locator"]
+
+
+def test_citation_includes_fhir_uuid_and_retrieved_at_when_present() -> None:
+    verified = [
+        _claim(
+            "Creatinine 1.4 mg/dL",
+            excerpt="CMP — within reference range",
+        )
+    ]
+    tool_results = [
+        {
+            "ok": True,
+            "tool": "labs",
+            "data": {
+                "facts": [
+                    {
+                        "text": "Creatinine 1.4 mg/dL",
+                        "table": "procedure_result",
+                        "id": "42",
+                        "excerpt": "CMP — within reference range",
+                        "fhir_uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                        "retrieved_at": "2026-07-22T12:00:00Z",
+                    }
+                ]
+            },
+        }
+    ]
+
+    citations = build_citation_records(verified, tool_results=tool_results)
+    cite = citations[0]
+    assert cite["retrieved_at"] == "2026-07-22T12:00:00Z"
+    assert cite["locator"]["fhir_uuid"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def test_research_citation_uses_meta_retrieved_at() -> None:
+    verified = [
+        Claim(
+            text="Take 20 mg once daily",
+            source_type="research",
+            locator=Locator(table="openfda", id="set-1#dosage"),
+            excerpt="Simvastatin — https://api.fda.gov/x",
+        )
+    ]
+    tool_results = [
+        {
+            "ok": True,
+            "tool": "research_label",
+            "data": {
+                "facts": [
+                    {
+                        "text": "Take 20 mg once daily",
+                        "table": "openfda",
+                        "id": "set-1#dosage",
+                        "excerpt": "Simvastatin — https://api.fda.gov/x",
+                    }
+                ],
+                "meta": {
+                    "on_chart": True,
+                    "query_term": "simvastatin",
+                    "source": "openfda",
+                    "set_id": "set-1",
+                    "retrieved_at": "2026-07-22T15:30:00Z",
+                },
+            },
+        }
+    ]
+
+    citations = build_citation_records(verified, tool_results=tool_results)
+    assert citations[0]["retrieved_at"] == "2026-07-22T15:30:00Z"
 
 
 def test_chart_title_falls_back_to_table_label_when_excerpt_empty() -> None:

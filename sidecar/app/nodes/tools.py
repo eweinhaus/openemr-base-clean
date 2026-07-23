@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 ROUTE_TOOLS: dict[Route, list[str]] = {
     "brief": ["patient_context", "labs", "meds", "notes"],
     "labs": ["labs"],
-    "meds": ["meds"],
+    # UC-3: meds + allergies (from meds tool) + conditions (patient_context).
+    "meds": ["meds", "patient_context"],
 }
 
 _FORM_HINT_RE = re.compile(r"\b(ER|XR|SA)\b", re.IGNORECASE)

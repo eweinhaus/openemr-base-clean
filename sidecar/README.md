@@ -71,15 +71,16 @@ Health:
 curl -s http://127.0.0.1:8080/health
 ```
 
-Ready (soft — always HTTP 200; `ready: false` when the gateway is unreachable
-**or `OPENROUTER_API_KEY` is missing**). OpenRouter `/models` reachability and
-LangSmith appear as soft fields (`openrouter.reachable`, `langsmith`) and never
-alone flip `ready`. `/ready` does **not** probe openFDA/DailyMed. `/v1/chat`
-reuses a short TTL readiness cache (`COPILOT_READY_CACHE_TTL_SECONDS`, default
-30s); `/ready` always probes fresh.
+Ready (soft **body**, hard **HTTP status**): `ready: false` when the gateway is
+unreachable **or `OPENROUTER_API_KEY` is missing**. OpenRouter `/models`
+reachability and LangSmith appear as soft fields (`openrouter.reachable`,
+`langsmith`) and never alone flip `ready`. `/ready` does **not** probe
+openFDA/DailyMed. **`/ready` returns HTTP 503 when `ready: false`** (body still
+includes the readiness JSON). `/v1/chat` reuses a short TTL readiness cache
+(`COPILOT_READY_CACHE_TTL_SECONDS`, default 30s); `/ready` always probes fresh.
 
 ```bash
-curl -s http://127.0.0.1:8080/ready
+curl -s -o /tmp/ready.json -w "%{http_code}\n" http://127.0.0.1:8080/ready
 ```
 
 Chat (SSE):
@@ -147,7 +148,27 @@ Same `correlation_id` joins the app disclosure JSONL (`ask_start` /
 is **not** outsourced to the tracer — LangSmith does not replace
 `DisclosureLog`.
 
-### Alert definition stubs (not wired)
+### Dashboard (I6) — MVP
+
+There is no Prometheus/Grafana `/metrics` UI. The **MVP dashboard** is:
+
+| Surface | What you get |
+| --- | --- |
+| **LangSmith UI** (when `LANGSMITH_TRACING` + key are set) | Request volume, errors, step latency on redacted graph runs |
+| **Disclosure JSONL** (`documents/copilot_disclosure.log`) | EHR-boundary audit: `ask_start` / `tool_proxy` / `event=verify` |
+
+Verify pass/fail: read JSONL lines with `event=verify` (`pass` + short `reason`:
+`ok`, `claims_dropped`, `all_refused`, `empty_verified`, …). Retries are **N/A**
+for MVP — OpenRouter client uses `max_retries=0` in `llm.py`.
+
+### Tokens / cost
+
+`llm.py` wraps the OpenAI-compatible client with LangSmith `wrap_openai` (when
+tracing is on) and logs prompt/completion/total token **usage** on each call.
+Use LangSmith cost views + those logs for Haiku spend; list prices change — see
+[`docs/cost-analysis.md`](../docs/cost-analysis.md).
+
+### Alerts (I7) — defined, paging deferred
 
 | Alert | Meaning | On-call response (demo) |
 | --- | --- | --- |
@@ -155,6 +176,8 @@ is **not** outsourced to the tracer — LangSmith does not replace
 | Error rate > threshold | Elevated SSE `error` | Check `/ready`, keys, disclosure/tool_proxy logs by `correlation_id` |
 | Tool failure rate > threshold | Chart proxy / bind failures | Check secret, bind TTL, pid mismatch lines in disclosure JSONL |
 
+Wiring these three alerts to a paging backend is **deferred debt**. Ops today:
+grep disclosure JSONL by `correlation_id` and/or watch LangSmith.
 ## Tests
 
 From repo root (host Python 3.11+):

@@ -75,6 +75,7 @@ final class LabsChartService
         $sql = <<<SQL
             SELECT
                 pr.procedure_result_id,
+                pr.uuid,
                 pr.result_text,
                 pr.result,
                 pr.units,
@@ -162,7 +163,13 @@ final class LabsChartService
             $excerptParts[] = 'Lab result';
         }
 
-        return new ChartFact($text, self::TABLE_NAME, $id, implode(' — ', $excerptParts));
+        return new ChartFact(
+            $text,
+            self::TABLE_NAME,
+            $id,
+            implode(' — ', $excerptParts),
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     private function stringifyId(mixed $id): string

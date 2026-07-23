@@ -2,7 +2,15 @@
 
 ## Current focus
 
-**Review hardening on DO (2026-07-22):** Commit `8b3f4d8` packaged + redeployed to
+**Success-criteria remediation (2026-07-22):** Closed audit gaps from
+`docs/success-criteria-audit.md` — allergy contradiction at verify, meds route
++ `patient_context`, citation `retrieved_at`/`fhir_uuid`, `/ready`→503,
+`wrap_openai` + usage logs, Bruno collection, eval catalog+results (164 pytest),
+cost analysis, k6 scaffold, ARCHITECTURE conflict wording aligned to deferred
+MVP. External still open: **demo video (A7)** and **social post (A10)**. Load
+baseline numbers (L2) need a real k6 run to fill.
+
+**Prior — Review hardening on DO (2026-07-22):** Commit `8b3f4d8` packaged + redeployed to
 https://142.93.255.212/. Overlay includes `InternalEndpointGuard`; sidecar rebuild
 with `defusedxml` + readiness TTL cache. Module active; OpenRouter **set**;
 LangSmith optional empty. Bind-seeded pid **6** dosing SSE → progress (chart →
@@ -10,14 +18,14 @@ meds → label) → clinical + segments → citation → done; disclosure JSONL
 `tool_proxy` + **`verify`** (`pass:true`,`reason:ok`) same `correlation_id`.
 Sidecar `/ready` true (gateway + key; soft openrouter/langsmith).
 
-**Next:** Optional Ask Co-Pilot Source click-path smoke; Early narrative / eval
-thin / demo video.
+**Next:** Redeploy remediation to DO; optional Source click-path smoke; demo
+video / Early narrative; fill load-test baseline after k6 run.
 
 ## PRD 07 decisions (locked — implemented)
 
 Canonical: `docs/PRDs/07-observability-langsmith.md` (H1–H13).
 
-- **LangSmith:** Optional keys; silent disable; force hide I/O when tracing on; metadata `correlation_id` only (no `pid`/message); no `wrap_openai` for MVP.
+- **LangSmith:** Optional keys; silent disable; force hide I/O when tracing on; metadata `correlation_id` only (no `pid`/message); OpenRouter client via `wrap_openai` + usage logs.
 - **`/ready`:** Soft `langsmith` + soft `openrouter.reachable`; hard deps = gateway reachable + OpenRouter **key**; never FDA; Compose healthcheck stays on `/health`. `/v1/chat` uses ~30s readiness cache; `/ready` always fresh.
 - **Fail-closed:** Sidecar `/v1/chat` gates on ready → SSE `sidecar_unready` (no graph).
 - **Internal endpoints:** `tool_proxy.php` / `disclosure.php` reject public `REMOTE_ADDR` via `InternalEndpointGuard` (loopback/RFC1918; escape `COPILOT_INTERNAL_ENDPOINTS_PUBLIC=1`).
@@ -35,12 +43,12 @@ Canonical: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13).
 - **Clinical SSE:** `{ text, segments[] }` — `kind: claim|assembly`; claims carry `citation_id` (`c1…n`).
 - **Citation SSE:** One batch `{ citations: [...] }` **after** `clinical`, before `done` (always emit, even if empty).
 - **Client:** Buffer until clinical+citation (~2.5s timeout / `done` → plain `text`); DOM-only (`textContent` / createElement); no `innerHTML`/markdown.
-- **Popup:** Picker-style `#acp-cite` dialog; `{ source_type, title, excerpt, locator }`; mutual exclusion with picker; focus returns to Source.
+- **Popup:** Picker-style `#acp-cite` dialog; `{ source_type, title, retrieved_at?, excerpt, locator (+ fhir_uuid?) }`; mutual exclusion with picker; focus returns to Source.
 - **Research Open label:** Allowlisted `https` only (`dailymed.nlm.nih.gov`, `api.fda.gov`) → `target=_blank` + `noopener noreferrer`.
 - **Builders:** `build_clinical_payload` + `build_citation_records` in `sidecar/app/claims.py`; emit/stream wire state `clinical_segments` / `citations`.
 - **Progress:** `Pulling chart…` / `Pulling labs…` / `Checking medications…`; keep `Looking up label information…`; drop `Routing…` / `Fetching chart…`.
 - **Gateway:** Pass-through only — citations built in sidecar from verified claims.
-- **Non-goals still out:** conflict UX, unverified UI, historical transcript re-hydrate, required `fhir_uuid`/`retrieved_at`.
+- **Non-goals still out:** conflict UX, unverified UI, historical transcript re-hydrate.
 
 ## PRD 05 decisions (locked — implemented)
 
@@ -160,18 +168,22 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **Brief four-tool bundle not cached yet** (planned TTL ~30–60s).
 - **Synthea notes empty** — honest empty; optional seed later.
 - **Draft parse under rich tools:** watch `draft_parse_failed`; truncate oldest labs if needed.
-- **`fhir_uuid` / `retrieved_at` on citations** — omitted/null in PRD 06; populate later.
+- **`fhir_uuid` / `retrieved_at` on citations** — populated when present (chart UUID + research stamp); UI renders both.
 - **Historical transcript citation re-hydrate** — MVP OK to show plain prior turns.
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
 - **DO overlay:** PRD 07 on droplet (`517f95a`) — disclosure + Gateway + sidecar observability.
 - **DO schedule:** `CoPilot Demo%` re-seed after day roll.
-- Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07); gateway `/ready` preflight deferred; optional `wrap_openai` deferred; wired alerts deferred.
+- Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07); gateway `/ready` preflight deferred; wired alerts remain markdown (ops = LangSmith + JSONL).
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
 - No rate limiting on `stream.php`.
 - **Dev compose** weak default `COPILOT_INTERNAL_SECRET`.
 - **Picker:** non-recurring today only; provider-scoped.
 - **Manual PRD 06 Ask Co-Pilot click-path** — SSE citation batch verified on DO; Source popup click-path optional.
 - **Manual PRD 05 UI smoke** — optional pid 2/amoxicillin.
+- **Allergy contradiction** at verify (meds research vs allergy list) — shipped; conditions via meds+`patient_context`.
+- **Success-criteria remediation** not yet redeployed to DO (code local).
+- **L2 load baseline numbers** — k6 script present; fill after run.
+- **A7 demo video / A10 social** — external placeholders in README.
 
 ## Remaining / next
 

@@ -55,6 +55,16 @@ class ChartFactTest extends TestCase
         $this->assertSame('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', $fact->toArray()['fhir_uuid']);
     }
 
+    public function testUuidFromRowValueAcceptsStringUuid(): void
+    {
+        $this->assertSame(
+            'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            ChartFact::uuidFromRowValue('AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE'),
+        );
+        $this->assertNull(ChartFact::uuidFromRowValue(null));
+        $this->assertNull(ChartFact::uuidFromRowValue(''));
+    }
+
     public function testChartFactSetSerializesFactsAndOptionalMeta(): void
     {
         $set = new ChartFactSet(

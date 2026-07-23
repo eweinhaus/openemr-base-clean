@@ -345,6 +345,14 @@
             citation.title == null ? '' : String(citation.title)
         );
 
+        if (citation.retrieved_at != null && String(citation.retrieved_at)) {
+            appendCiteRow(
+                citeBodyEl,
+                'retrieved_at',
+                String(citation.retrieved_at)
+            );
+        }
+
         var excerpt =
             citation.excerpt == null ? '' : String(citation.excerpt);
         var locator = citation.locator || {};
@@ -368,6 +376,9 @@
         }
         if (locId) {
             appendCiteRow(citeBodyEl, 'id', locId);
+        }
+        if (locator.fhir_uuid != null && String(locator.fhir_uuid)) {
+            appendCiteRow(citeBodyEl, 'fhir_uuid', String(locator.fhir_uuid));
         }
 
         var url = locator.url == null ? '' : String(locator.url);

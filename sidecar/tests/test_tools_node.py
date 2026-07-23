@@ -28,23 +28,43 @@ from sidecar.app.research.constants import (
 def _ok_meds_gateway(
     facts: list[dict[str, Any]] | None = None,
 ) -> MagicMock:
-    """Gateway that returns a successful meds chart payload."""
+    """Gateway that returns successful chart payloads for meds route tools."""
+    meds_facts = (
+        facts
+        if facts is not None
+        else [
+            {
+                "text": "Simvastatin 20 MG Oral Tablet (RxNorm 312961)",
+                "table": "prescriptions",
+                "id": "12",
+            }
+        ]
+    )
+
+    def _call(tool: str, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        if tool == "patient_context":
+            return {
+                "ok": True,
+                "tool": "patient_context",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Active problem: Hyperlipidemia",
+                            "table": "lists",
+                            "id": "3",
+                            "excerpt": "Problem list — active",
+                        }
+                    ]
+                },
+            }
+        return {
+            "ok": True,
+            "tool": "meds",
+            "data": {"facts": meds_facts},
+        }
+
     gateway = MagicMock()
-    gateway.call_tool.return_value = {
-        "ok": True,
-        "tool": "meds",
-        "data": {
-            "facts": facts
-            if facts is not None
-            else [
-                {
-                    "text": "Simvastatin 20 MG Oral Tablet (RxNorm 312961)",
-                    "table": "prescriptions",
-                    "id": "12",
-                }
-            ]
-        },
-    }
+    gateway.call_tool.side_effect = _call
     return gateway
 
 
@@ -52,7 +72,7 @@ def test_route_tools_names_and_brief_has_four() -> None:
     assert ROUTE_TOOLS == {
         "brief": ["patient_context", "labs", "meds", "notes"],
         "labs": ["labs"],
-        "meds": ["meds"],
+        "meds": ["meds", "patient_context"],
     }
     assert all("_stub" not in name for names in ROUTE_TOOLS.values() for name in names)
 
@@ -407,6 +427,8 @@ def test_meds_dosing_fetch_hit_appends_research_label(
     assert research[0]["data"]["meta"]["on_chart"] is True
     chart_meds = [r for r in result["tool_results"] if r["tool"] == "meds"]
     assert len(chart_meds) == 1
+    chart_ctx = [r for r in result["tool_results"] if r["tool"] == "patient_context"]
+    assert len(chart_ctx) == 1
 
 
 def test_meds_dosing_fetch_raises_keeps_chart_no_error(

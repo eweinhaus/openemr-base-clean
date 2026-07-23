@@ -263,7 +263,9 @@ async def ready() -> JSONResponse:
     settings = get_settings()
     # Ops probe always fresh — do not serve a stale cache here.
     body = await get_readiness(settings, force_refresh=True)
-    return JSONResponse(content=body)
+    # Orchestrators that key off HTTP status alone must see 503 when not ready.
+    status_code = 200 if body.get("ready") else 503
+    return JSONResponse(content=body, status_code=status_code)
 
 
 @app.post("/v1/chat", response_model=None)

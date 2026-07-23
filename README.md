@@ -28,9 +28,23 @@ This fork hosts the **Clinical Co-Pilot** project — an AI agent embedded in Op
 | --- | --- |
 | **Deployed app** | https://142.93.255.212/ |
 | **Demo login** | `admin` / `pass` |
-| **Hosting** | DigitalOcean Droplet (NYC1), Docker Compose: OpenEMR + MariaDB |
+| **Hosting** | DigitalOcean Droplet (NYC1), Docker Compose: OpenEMR + MariaDB + LangGraph sidecar (single worker, 2 GB) |
 
 Self-signed HTTPS on the IP URL will show a browser warning. Use demo data only.
+
+| Doc | |
+| --- | --- |
+| Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Audit | [AUDIT.md](AUDIT.md) |
+| Users | [USERS.md](USERS.md) |
+| Cost analysis (A9/L5) | [docs/cost-analysis.md](docs/cost-analysis.md) |
+| Eval catalog + results (A8) | [docs/eval/](docs/eval/) |
+| API collection (Bruno) | [docs/api/](docs/api/) |
+| Load tests (k6) | [docs/load-tests/](docs/load-tests/) |
+
+<!-- TODO: add 3–5 min demo video URL -->
+
+<!-- A10 final only: add social post URL (X or LinkedIn, tag @GauntletAI) -->
 
 ### Contributing
 

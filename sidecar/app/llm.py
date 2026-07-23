@@ -9,6 +9,7 @@ import re
 from contextvars import ContextVar
 from typing import Any, Literal
 
+from langsmith.wrappers import wrap_openai
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 Route = Literal["brief", "labs", "meds"]
@@ -172,11 +173,14 @@ def _get_client() -> OpenAI:
             "OPENROUTER_API_KEY is not configured",
             code="llm_not_configured",
         )
-    return OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=timeout,
-        max_retries=0,
+    # wrap_openai captures token usage / cost into LangSmith when tracing is on.
+    return wrap_openai(
+        OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+        )
     )
 
 
@@ -217,6 +221,18 @@ def _chat_completion(
         ) from exc
     except Exception as exc:
         raise LlmError("OpenRouter request failed", code="llm_unavailable") from exc
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        logger.info(
+            "OpenRouter LLM usage",
+            extra={
+                **log_extra,
+                "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                "completion_tokens": getattr(usage, "completion_tokens", None),
+                "total_tokens": getattr(usage, "total_tokens", None),
+            },
+        )
 
     content = response.choices[0].message.content
     if not isinstance(content, str) or not content.strip():

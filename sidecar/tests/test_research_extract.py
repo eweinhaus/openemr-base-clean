@@ -179,14 +179,17 @@ def test_build_research_tool_result_meta_shape() -> None:
         query_term="simvastatin",
         source="openfda",
         set_id=_SET_ID,
+        retrieved_at="2026-07-22T12:00:00Z",
     )
     assert payload["ok"] is True
     assert payload["tool"] == RESEARCH_TOOL_NAME
-    assert payload["data"]["facts"] == facts
+    stamped = [{**f, "retrieved_at": "2026-07-22T12:00:00Z"} for f in facts]
+    assert payload["data"]["facts"] == stamped
     meta = payload["data"]["meta"]
     assert meta == {
         "on_chart": True,
         "query_term": "simvastatin",
         "source": "openfda",
         "set_id": _SET_ID,
+        "retrieved_at": "2026-07-22T12:00:00Z",
     }

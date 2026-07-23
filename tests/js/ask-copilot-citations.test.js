@@ -377,7 +377,13 @@ describe('citation dialog', () => {
             source_type: 'chart',
             title: 'Lab',
             excerpt: 'LDL 142',
-            locator: { table: 'procedure_result', id: '42', url: 'https://evil.example/x' }
+            retrieved_at: '2026-07-22T12:00:00Z',
+            locator: {
+                table: 'procedure_result',
+                id: '42',
+                url: 'https://evil.example/x',
+                fhir_uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            }
         });
 
         expect(citeVisible()).toBe(true);
@@ -385,6 +391,10 @@ describe('citation dialog', () => {
         expect(el('acp-cite-body').textContent).toContain('chart');
         expect(el('acp-cite-body').textContent).toContain('procedure_result');
         expect(el('acp-cite-body').textContent).toContain('42');
+        expect(el('acp-cite-body').textContent).toContain('2026-07-22T12:00:00Z');
+        expect(el('acp-cite-body').textContent).toContain(
+            'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        );
     });
 
     test('Escape and Close restore focus to the Source button', async () => {

@@ -158,7 +158,7 @@ Do **not** invent “likely none” or pad with speculative reassurance. Prefer 
 
 - **Link every verified clinical claim** in the answer (chart or research). Goal: physician can audit anything on screen — supports “zero silent hallucinations.”
 - Citation target = in-pane popup (PRD 06): locator + useful excerpt / research title·section·URL as available.
-- Conflicts (openFDA vs DailyMed): **short conflict statement in chat** + **both sides linkable** via citations / popup — physician decides; never silently pick a winner.
+- Conflicts (openFDA vs DailyMed): **deferred for MVP** (fallback-only path). When conflict UX lands later: short conflict statement in chat + both sides linkable — physician decides; never silently pick a winner.
 - Unverified (if used at all): hard-labeled block, **no** citation links that imply chart backing.
 
 ### Progress events (waiting UX)
@@ -243,7 +243,7 @@ Keep progress short; one domain at a time is enough. No fake precision (“87% c
 | Claim has resolvable chart/research locator and passes verify | Present as normal clinical text + **citation link** |
 | Claim cannot be verified | Prefer **omit** or **refuse** that claim; if shown, hard-label **`unverified`** and keep it out of the verified block |
 | Dosing / interactions / “what should I prescribe” without retrieved label | **Refuse** the unsupported part; may still return cited chart meds/allergies/conditions |
-| Label conflict | Surface both in chat (short); citations for each; physician decides |
+| Label conflict | **MVP deferred** (fallback-only). Later: surface both in chat; citations for each; physician decides |
 | Missing RxNorm / unclear drug identity | Say identity is uncertain; **no** dosing research until clear |
 | Tool domain failed | Partial verified answer + `… unavailable — try again.` for that domain |
 | Empty domain | Explicit short “none / no recent … on file” (see §6) |

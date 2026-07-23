@@ -87,6 +87,7 @@ final class PatientContextService
         $sql = <<<SQL
             SELECT
                 id,
+                uuid,
                 encounter,
                 `date`,
                 reason
@@ -114,6 +115,7 @@ final class PatientContextService
         $sql = <<<SQL
             SELECT
                 id,
+                uuid,
                 title,
                 diagnosis,
                 begdate,
@@ -165,7 +167,13 @@ final class PatientContextService
             ? 'Encounter reason on file'
             : 'Most recent encounter';
 
-        return new ChartFact($text, self::ENCOUNTER_TABLE, $id, $excerpt);
+        return new ChartFact(
+            $text,
+            self::ENCOUNTER_TABLE,
+            $id,
+            $excerpt,
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     /**
@@ -190,7 +198,13 @@ final class PatientContextService
             ? 'Problem list — onset ' . $begdate . ', active'
             : 'Problem list — active';
 
-        return new ChartFact($text, self::LISTS_TABLE, $id, $excerpt);
+        return new ChartFact(
+            $text,
+            self::LISTS_TABLE,
+            $id,
+            $excerpt,
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     private function stringifyId(mixed $id): string

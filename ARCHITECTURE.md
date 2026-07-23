@@ -17,7 +17,7 @@ Clinical Co-Pilot is a **hybrid** agent embedded in OpenEMR for a clinic / prima
 
 **Chart path.** MVP reads chart via OpenEMR **PHP services** (`PatientContextService` snapshot for UC-1; fine-grained lab/med/note tools for follow-ups), always proxied through the gateway. FHIR IDs may appear in citations when present; FHIR-as-primary and SMART tokens are phase-2 talk track for interview depth without dual-path complexity now.
 
-**Jobs.** **UC-1** synthesizes why-here, conditions, last visit, selective notes, and high-signal structured pointers. **UC-2** answers recent labs / abnormals with chart locators. **UC-3** combines chart meds/allergies/conditions with **openFDA** labels (DailyMed fallback); outbound queries are **drug/condition terms only** (no PHI). Dosing / interaction claims require retrieved sources — otherwise refuse that claim while still returning cited chart facts. Label conflicts are surfaced as conflicts, never silently resolved. Missing RxNorm → uncertain drug identity; no invented codes; no dosing research until identity is clear.
+**Jobs.** **UC-1** synthesizes why-here, conditions, last visit, selective notes, and high-signal structured pointers. **UC-2** answers recent labs / abnormals with chart locators. **UC-3** combines chart meds/allergies/conditions with **openFDA** labels (DailyMed fallback); outbound queries are **drug/condition terms only** (no PHI). Dosing / interaction claims require retrieved sources — otherwise refuse that claim while still returning cited chart facts. **Label conflict UX is deferred for MVP** (openFDA primary → DailyMed fallback on miss/timeout/empty dose — never invent a dose; dual-source conflict surface is post-MVP). Missing RxNorm → uncertain drug identity; no invented codes; no dosing research until identity is clear.
 
 **Verification & streaming.** The model emits structured claim/source pairs; a **verify** node drops anything without a resolvable locator (table+pk and/or FHIR id; note id+span; research URL/title/section) and applies domain checks (allergy contradiction, missing RxNorm uncertainty). **Hybrid SSE:** stream non-clinical progress immediately; stream clinical text only after verify clears it. We reject “show unverified claims with a warning” — warnings get skimmed under time pressure.
 
@@ -73,7 +73,7 @@ Diagrams: [`docs/architecture-overview.md`](./docs/architecture-overview.md).
 | --- | --- | --- | --- |
 | Pre-visit brief | UC-1 | `PatientContextService` snapshot (+ selective notes) | Every fact → chart locator; prefer structured over notes |
 | Labs Q&A | UC-2 | Labs drill-down (order→report→result path) | Value/date/abnormal flags → result locator |
-| Med decision-support | UC-3 | Meds/allergies/conditions + openFDA/DailyMed | Chart claims cited; dosing/interactions only from retrieved label; conflicts surfaced |
+| Med decision-support | UC-3 | Meds/allergies/conditions + openFDA/DailyMed | Chart claims cited; dosing/interactions only from retrieved label; conflict UX deferred (fallback-only) |
 | Multi-turn follow-up | UC-1/2/3 | Same tools; transcript in open tab | Pid still bound; no silent patient switch |
 | Refuse unbound / wrong pid | All | N/A | Fail closed before chart tools |
 
@@ -103,7 +103,7 @@ Browser → OpenEMR only. Gateway validates cookie/session, binds `pid`, calls s
 - Outbound query = drug and/or condition terms only.
 - Dosing / interaction / label-backed options: cite URL/title/section; model memory is not a source.
 - Miss → return cited chart context + explicit “no retrieved source for dosing/interactions.”
-- openFDA vs DailyMed disagreement → state both and that they conflict; physician decides.
+- **MVP:** openFDA primary → DailyMed fallback only (no dual-fetch compare). Dual-source conflict surface (state both; physician decides) is deferred post-MVP.
 - No separate interaction API in MVP.
 
 ### 4.4 Verification — structured claims, cite-or-silence
@@ -195,7 +195,7 @@ Tab may open without `pid` (Calendar/Messages-style). Before chart tools: **pati
 - Empty / sparse chart  
 - Cross-pid / unbound patient  
 - Missing RxNorm (seed one free-text med if Synthea import is fully coded)  
-- Research miss / label conflict  
+- Research miss (label conflict surface deferred)  
 - Ambiguous lab name  
 - Happy paths: UC-1 brief, UC-2 creatinine, UC-3 label-backed question  
 
@@ -207,7 +207,7 @@ Tab may open without `pid` (Calendar/Messages-style). Before chart tools: **pati
 2. Gateway SSE endpoint + correlation ID + disclosure log stub  
 3. Sidecar skeleton graph (route → tools → draft → verify) + Haiku via OpenRouter  
 4. `PatientContextService` + lab/med/note tools (pid checks)  
-5. openFDA tool + DailyMed fallback + conflict/miss behavior  
+5. openFDA tool + DailyMed fallback + miss behavior (conflict UX deferred)  
 6. Citation popup wiring; hybrid stream events  
 7. LangSmith redacted traces; `/health` + `/ready`  
 8. Synthea ~5–10 patients local + DO; smoke demo script  

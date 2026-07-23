@@ -82,13 +82,17 @@ def parse_claims_json(raw: str) -> DraftClaims:
 
 
 # Canonical refusal codes the verify node may surface (model text is discarded).
-ALLOWED_REFUSAL_CODES: frozenset[str] = frozenset({"no_research"})
+ALLOWED_REFUSAL_CODES: frozenset[str] = frozenset(
+    {"no_research", "allergy_contradiction"}
+)
+
+_ALLERGY_PREFIX = "Allergy: "
 
 
 def build_tool_fact_map(
     tool_results: list[dict[str, Any]],
 ) -> dict[tuple[str, str], dict[str, str]]:
-    """Map (table, id) → {text, excerpt?} from this turn's tool facts."""
+    """Map (table, id) → {text, excerpt?, fhir_uuid?, retrieved_at?} from tool facts."""
     fact_map: dict[tuple[str, str], dict[str, str]] = {}
     for result in tool_results:
         if not result.get("ok"):
@@ -111,8 +115,143 @@ def build_tool_fact_map(
             excerpt = fact.get("excerpt")
             if isinstance(excerpt, str) and excerpt.strip():
                 entry["excerpt"] = excerpt.strip()
+            fhir_uuid = fact.get("fhir_uuid")
+            if isinstance(fhir_uuid, str) and fhir_uuid.strip():
+                entry["fhir_uuid"] = fhir_uuid.strip()
+            retrieved_at = fact.get("retrieved_at")
+            if isinstance(retrieved_at, str) and retrieved_at.strip():
+                entry["retrieved_at"] = retrieved_at.strip()
             fact_map[(str(table), str(fact_id))] = entry
     return fact_map
+
+
+def allergy_titles_from_tool_results(
+    tool_results: list[dict[str, Any]],
+) -> list[str]:
+    """Extract allergy titles from chart facts (``Allergy: …`` text prefix)."""
+    titles: list[str] = []
+    for result in tool_results:
+        if not result.get("ok"):
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        facts = data.get("facts")
+        if not isinstance(facts, list):
+            continue
+        for fact in facts:
+            if not isinstance(fact, dict):
+                continue
+            text = fact.get("text")
+            if not isinstance(text, str) or not text.startswith(_ALLERGY_PREFIX):
+                continue
+            title = text[len(_ALLERGY_PREFIX) :].strip()
+            # Drop optional reaction suffix (" — anaphylaxis").
+            if " — " in title:
+                title = title.split(" — ", 1)[0].strip()
+            if title:
+                titles.append(title)
+    return titles
+
+
+def research_query_terms_from_tool_results(
+    tool_results: list[dict[str, Any]],
+) -> list[str]:
+    """Drug query terms from research_label meta (and chart Rx display names)."""
+    terms: list[str] = []
+    for result in tool_results:
+        if not result.get("ok"):
+            continue
+        tool = result.get("tool")
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        if tool == RESEARCH_TOOL_NAME:
+            meta = data.get("meta")
+            if isinstance(meta, dict):
+                query_term = meta.get("query_term")
+                if isinstance(query_term, str) and query_term.strip():
+                    terms.append(query_term.strip())
+        facts = data.get("facts")
+        if not isinstance(facts, list):
+            continue
+        for fact in facts:
+            if not isinstance(fact, dict):
+                continue
+            if fact.get("table") != "prescriptions":
+                continue
+            text = fact.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            # Display name is leading token(s) before dosage / uncertain suffix.
+            name = text.strip()
+            if " (RxNorm not on file" in name:
+                name = name.split(" (RxNorm not on file", 1)[0].strip()
+            if " — " in name:
+                name = name.split(" — ", 1)[0].strip()
+            # Keep first word cluster that looks like a drug name (drop trailing dose nums).
+            parts = name.split()
+            drug_parts: list[str] = []
+            for part in parts:
+                if any(ch.isdigit() for ch in part):
+                    break
+                drug_parts.append(part)
+            if drug_parts:
+                terms.append(" ".join(drug_parts))
+            elif name:
+                terms.append(name)
+    return terms
+
+
+def _tokens_overlap(a: str, b: str) -> bool:
+    """Case-insensitive whole-token or substring match for drug ↔ allergy titles."""
+    left = a.strip().lower()
+    right = b.strip().lower()
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if left in right or right in left:
+        return True
+    left_tokens = {t for t in re.split(r"[^a-z0-9]+", left) if len(t) >= 3}
+    right_tokens = {t for t in re.split(r"[^a-z0-9]+", right) if len(t) >= 3}
+    return bool(left_tokens & right_tokens)
+
+
+def apply_allergy_contradiction(
+    verified: list[Claim],
+    tool_results: list[dict[str, Any]],
+) -> tuple[list[Claim], bool]:
+    """Drop dosing/med claims that contradict an allergy on this turn's facts.
+
+    Returns ``(filtered_claims, contradiction_found)``. When a researched or
+    prescription claim's drug overlaps an allergy title, drop research claims
+    and matching prescription claims so verify does not recommend that drug.
+    """
+    allergies = allergy_titles_from_tool_results(tool_results)
+    if not allergies:
+        return verified, False
+
+    drug_terms = research_query_terms_from_tool_results(tool_results)
+    conflicting_terms = [
+        term
+        for term in drug_terms
+        if any(_tokens_overlap(term, allergy) for allergy in allergies)
+    ]
+    if not conflicting_terms:
+        return verified, False
+
+    filtered: list[Claim] = []
+    for claim in verified:
+        if claim.source_type == "research" or claim.locator.table in RESEARCH_TABLES:
+            # Any research claim on a turn where the queried drug conflicts.
+            continue
+        if claim.locator.table == "prescriptions":
+            text = claim.text or ""
+            if any(_tokens_overlap(term, text) for term in conflicting_terms):
+                continue
+        filtered.append(claim)
+    return filtered, True
 
 
 def build_tool_index(tool_results: list[dict[str, Any]]) -> set[tuple[str, str]]:
@@ -247,30 +386,62 @@ def build_citation_records(
 ) -> list[dict[str, Any]]:
     """One citation record per verified claim; ids match clinical segments (H3).
 
-    Never invents ``fhir_uuid`` / ``retrieved_at``. Keeps claim ``source_type``
-    (H10). Research title/url from excerpt ``" — "`` split or DailyMed set_id.
+    Emits ``fhir_uuid`` / ``retrieved_at`` only when present on the source fact.
+    Keeps claim ``source_type`` (H10). Research title/url from excerpt ``" — "``
+    split or DailyMed set_id.
     """
     results = tool_results or []
     set_ids = _research_set_ids_by_locator(results)
+    fact_map = build_tool_fact_map(results)
+    # Research tool meta may carry a turn-level retrieved_at for all research facts.
+    research_retrieved_at = _research_retrieved_at(results)
     citations: list[dict[str, Any]] = []
     for index, claim in enumerate(verified, start=1):
         excerpt = claim.excerpt if isinstance(claim.excerpt, str) else ""
         excerpt = excerpt.strip() if excerpt else ""
         title, url = _citation_title_and_url(claim, excerpt, set_ids)
-        citations.append(
-            {
-                "citation_id": f"c{index}",
-                "source_type": claim.source_type,
-                "title": title,
-                "excerpt": excerpt,
-                "locator": {
-                    "table": claim.locator.table,
-                    "id": claim.locator.id,
-                    "url": url,
-                },
-            }
+        key = (claim.locator.table, claim.locator.id)
+        fact = fact_map.get(key, {})
+        locator: dict[str, Any] = {
+            "table": claim.locator.table,
+            "id": claim.locator.id,
+            "url": url,
+        }
+        fhir_uuid = fact.get("fhir_uuid")
+        if fhir_uuid:
+            locator["fhir_uuid"] = fhir_uuid
+        citation: dict[str, Any] = {
+            "citation_id": f"c{index}",
+            "source_type": claim.source_type,
+            "title": title,
+            "excerpt": excerpt,
+            "locator": locator,
+        }
+        retrieved_at = fact.get("retrieved_at") or (
+            research_retrieved_at
+            if claim.source_type == "research" or claim.locator.table in RESEARCH_TABLES
+            else None
         )
+        if retrieved_at:
+            citation["retrieved_at"] = retrieved_at
+        citations.append(citation)
     return citations
+
+
+def _research_retrieved_at(tool_results: list[dict[str, Any]]) -> str | None:
+    for result in tool_results:
+        if result.get("tool") != RESEARCH_TOOL_NAME:
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        meta = data.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        retrieved_at = meta.get("retrieved_at")
+        if isinstance(retrieved_at, str) and retrieved_at.strip():
+            return retrieved_at.strip()
+    return None
 
 
 def _assembly_lines(

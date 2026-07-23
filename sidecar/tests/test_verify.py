@@ -762,3 +762,78 @@ def test_verify_node_callback_exception_does_not_set_error() -> None:
     assert len(out["verified_claims"]) == 1
     assert "error" not in out
     gateway.post_verify_disclosure.assert_called_once()
+
+
+def test_verify_node_allergy_contradiction_drops_research() -> None:
+    """C3.7/F5: dosing research for a drug on the allergy list is refused."""
+    from sidecar.app.nodes.verify import verify_node
+    from sidecar.app.state import ALLERGY_CONTRADICTION_REFUSAL
+
+    set_id = "allergy-set"
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Usual adult dose 20 mg once daily",
+                source_type="research",
+                locator=Locator(table="openfda", id=f"{set_id}#dosage"),
+                excerpt="Penicillin — https://api.fda.gov/x",
+            ),
+            Claim(
+                text="Allergy: Penicillin — anaphylaxis",
+                source_type="chart",
+                locator=Locator(table="lists", id="9"),
+            ),
+        ],
+        refusals=[],
+    )
+    state = {
+        "message": "What dose of penicillin should I use?",
+        "correlation_id": "allergy-1",
+        "draft_claims": draft,
+        "tool_results": [
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Allergy: Penicillin — anaphylaxis",
+                            "table": "lists",
+                            "id": "9",
+                            "excerpt": "Allergy list",
+                        }
+                    ],
+                    "meta": {"active_med_count": 0, "allergy_count": 1},
+                },
+            },
+            {
+                "ok": True,
+                "tool": "research_label",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Usual adult dose 20 mg once daily",
+                            "table": "openfda",
+                            "id": f"{set_id}#dosage",
+                            "excerpt": "Penicillin — https://api.fda.gov/x",
+                        }
+                    ],
+                    "meta": {
+                        "on_chart": False,
+                        "query_term": "penicillin",
+                        "source": "openfda",
+                        "set_id": set_id,
+                    },
+                },
+            },
+        ],
+    }
+
+    out = verify_node(state)
+
+    assert all(c.source_type != "research" for c in out["verified_claims"])
+    assert any(
+        r.code == ALLERGY_CONTRADICTION_REFUSAL.code for r in out["refusals"]
+    )
+    # Allergy chart fact itself may still verify.
+    assert any(c.locator.table == "lists" for c in out["verified_claims"])

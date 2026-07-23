@@ -84,6 +84,7 @@ final class NotesChartService
         $sql = <<<SQL
             SELECT
                 id,
+                uuid,
                 `date`,
                 description,
                 codetext,
@@ -138,7 +139,13 @@ final class NotesChartService
         }
         $text .= ': ' . $this->truncate($plain, min(160, $excerptMax));
 
-        return new ChartFact($text, self::TABLE_NAME, $id, $excerpt);
+        return new ChartFact(
+            $text,
+            self::TABLE_NAME,
+            $id,
+            $excerpt,
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     private function toPlainText(string $value): string

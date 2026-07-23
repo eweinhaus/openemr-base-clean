@@ -1,0 +1,39 @@
+meta {
+  name: Tool proxy
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{openemrBaseUrl}}/interface/ask_copilot/tool_proxy.php
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+  X-Copilot-Internal-Secret: {{internalSecret}}
+  X-Correlation-Id: {{correlationId}}
+}
+
+body:json {
+  {
+    "tool": "labs",
+    "pid": {{pid}},
+    "user_id": {{userId}},
+    "correlation_id": "{{correlationId}}"
+  }
+}
+
+docs {
+  ## Internal chart tool proxy
+
+  Called by the sidecar only (not the browser). Tools: `patient_context`, `labs`, `meds`, `notes`.
+
+  - Header `X-Copilot-Internal-Secret` required
+  - Correlation bind must exist (created by `stream.php` for that turn)
+  - `pid` must match bind (fail-closed); chart reads use bind pid
+  - Public REMOTE_ADDR rejected (403) unless escape env is set
+  - Wrong secret → 401
+}

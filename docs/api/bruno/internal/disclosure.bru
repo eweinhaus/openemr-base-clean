@@ -1,0 +1,34 @@
+meta {
+  name: Verify disclosure
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{openemrBaseUrl}}/interface/ask_copilot/disclosure.php
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+  X-Copilot-Internal-Secret: {{internalSecret}}
+  X-Correlation-Id: {{correlationId}}
+}
+
+body:json {
+  {
+    "event": "verify",
+    "pass": true,
+    "reason": "ok",
+    "correlation_id": "{{correlationId}}"
+  }
+}
+
+docs {
+  ## Internal verify disclosure callback
+
+  Best-effort JSONL line (`event=verify`) joining the same `correlation_id` as LangSmith.
+  Requires secret + existing correlation bind. Wrong secret → 401.
+}

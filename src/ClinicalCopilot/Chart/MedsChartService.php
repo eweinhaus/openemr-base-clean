@@ -101,6 +101,7 @@ final class MedsChartService
         $sql = <<<SQL
             SELECT
                 id,
+                uuid,
                 drug,
                 dosage,
                 size,
@@ -136,6 +137,7 @@ final class MedsChartService
         $sql = <<<SQL
             SELECT
                 id,
+                uuid,
                 title,
                 reaction,
                 comments,
@@ -219,7 +221,13 @@ final class MedsChartService
             ? 'Active Rx — started ' . $start
             : 'Active Rx';
 
-        return new ChartFact($text, self::PRESCRIPTIONS_TABLE, $id, $excerpt);
+        return new ChartFact(
+            $text,
+            self::PRESCRIPTIONS_TABLE,
+            $id,
+            $excerpt,
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     /**
@@ -244,7 +252,13 @@ final class MedsChartService
             ? 'Allergy list — ' . $this->truncate($comments, 120)
             : 'Allergy list';
 
-        return new ChartFact($text, self::LISTS_TABLE, $id, $excerpt);
+        return new ChartFact(
+            $text,
+            self::LISTS_TABLE,
+            $id,
+            $excerpt,
+            ChartFact::uuidFromRowValue($row['uuid'] ?? null),
+        );
     }
 
     /**

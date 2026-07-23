@@ -20,6 +20,11 @@ DOSING_REFUSAL = Refusal(
     text="No retrieved label source for dosing — I won't guess.",
 )
 
+ALLERGY_CONTRADICTION_REFUSAL = Refusal(
+    code="allergy_contradiction",
+    text="This medication appears on the allergy list — I won't suggest dosing.",
+)
+
 
 class GraphState(TypedDict, total=False):
     correlation_id: str

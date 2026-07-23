@@ -8,18 +8,20 @@ from typing import Callable
 from ..claims import (
     DraftClaims,
     Refusal,
+    apply_allergy_contradiction,
     build_tool_fact_map,
     filter_refusals,
     verify_claims,
 )
 from ..gateway_client import GatewayClient
 from ..research import RESEARCH_TABLES, is_dosing_like
-from ..state import DOSING_REFUSAL, GraphState
+from ..state import ALLERGY_CONTRADICTION_REFUSAL, DOSING_REFUSAL, GraphState
 
 logger = logging.getLogger(__name__)
 
 _CANONICAL_REFUSALS: dict[str, Refusal] = {
     DOSING_REFUSAL.code: DOSING_REFUSAL,
+    ALLERGY_CONTRADICTION_REFUSAL.code: ALLERGY_CONTRADICTION_REFUSAL,
 }
 
 
@@ -76,10 +78,17 @@ def _run_verify(
             },
         )
 
+    verified, allergy_hit = apply_allergy_contradiction(verified, tool_results)
+
     refusals = filter_refusals(
         list(draft.refusals),
         canonical=_CANONICAL_REFUSALS,
     )
+    if allergy_hit and not any(
+        r.code == ALLERGY_CONTRADICTION_REFUSAL.code for r in refusals
+    ):
+        refusals.append(ALLERGY_CONTRADICTION_REFUSAL)
+
     # H1: append no_research only when dosing-like AND no verified research dosing fact.
     message = state.get("message", "")
     if is_dosing_like(message) and not _has_verified_research_dosing(verified):

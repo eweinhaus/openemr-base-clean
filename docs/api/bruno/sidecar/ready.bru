@@ -1,0 +1,26 @@
+meta {
+  name: Ready
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{sidecarBaseUrl}}/ready
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  ## Sidecar readiness
+
+  Hard deps: gateway reachable + `OPENROUTER_API_KEY` present.
+  Soft fields: `openrouter.reachable`, `langsmith` — never alone flip `ready`.
+  Does **not** probe openFDA/DailyMed.
+
+  **HTTP 503** when `ready: false` (orchestrators that key off status alone see degradation).
+  Body still returns the readiness JSON.
+}

@@ -24,7 +24,7 @@ def test_health_returns_200_ok() -> None:
     assert response.text == "ok"
 
 
-def test_ready_returns_200_with_degraded_body_when_deps_unreachable() -> None:
+def test_ready_returns_503_with_degraded_body_when_deps_unreachable() -> None:
     async def fake_probe(*_args: object, **_kwargs: object) -> dict[str, object]:
         return {"reachable": False, "error": "ConnectError"}
 
@@ -38,7 +38,7 @@ def test_ready_returns_200_with_degraded_body_when_deps_unreachable() -> None:
             with TestClient(app) as client:
                 response = client.get("/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
     assert body["ready"] is False
     assert body["gateway"]["reachable"] is False
@@ -61,7 +61,7 @@ def test_ready_reports_unready_when_api_key_missing(
         with TestClient(app) as client:
             response = client.get("/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
     assert body["ready"] is False
     assert body["gateway"]["reachable"] is True

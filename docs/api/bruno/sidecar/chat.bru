@@ -1,0 +1,40 @@
+meta {
+  name: Chat SSE
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{sidecarBaseUrl}}/v1/chat
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: text/event-stream
+  X-Copilot-Internal-Secret: {{internalSecret}}
+  X-Correlation-Id: {{correlationId}}
+}
+
+body:json {
+  {
+    "correlation_id": "{{correlationId}}",
+    "user_id": {{userId}},
+    "username": "admin",
+    "pid": {{pid}},
+    "message": "Show recent labs",
+    "transcript": []
+  }
+}
+
+docs {
+  ## Sidecar chat (internal SSE)
+
+  Not a browser endpoint. Gateway proxies here after session+CSRF validation.
+
+  - Header `X-Copilot-Internal-Secret` required → 401 if wrong/missing
+  - Hybrid SSE: progress (non-clinical) then verified clinical + citations
+  - Unbound / missing pid → clinical refusal (no LLM chart work)
+  - When sidecar unready → SSE `error` with `code=sidecar_unready`
+}

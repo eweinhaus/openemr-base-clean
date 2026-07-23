@@ -36,14 +36,15 @@
 - [x] **PRD 07 written + coded (2026-07-22):** LangSmith env-gated + force hide; soft `/ready.langsmith`; `sidecar_unready` fail-closed; `disclosure.php` + `VerifyDisclosureService`; verify callback; alert stubs in README; sidecar pytest **157**; isolated PHPUnit disclosure **29**.
 - [x] **PRD 07 on DO (2026-07-22):** commit `517f95a`; disclosure `verify` join smoked.
 - [x] **PRD 4–7 review hardening (2026-07-22):** readiness cache + soft OpenRouter `/models`; `InternalEndpointGuard`; research body cap + `defusedxml`; no model excerpt fallback; research redirects. Sidecar pytest **161**. Commit `8b3f4d8`.
-- [x] **DO redeploy review hardening (2026-07-22):** `8b3f4d8` overlay+sidecar; module active; OpenRouter set; pid 6 dosing → progress → clinical → citation → done; disclosure `verify` join confirmed.
+- [x] **Success-criteria remediation (2026-07-22):** allergy contradiction; meds+conditions route; citation `retrieved_at`/`fhir_uuid`; `/ready` 503; `wrap_openai`; Bruno API; eval catalog+164 pytest recorded; cost analysis; k6 scaffold; conflict docs aligned to deferred MVP.
 
 ## Remaining (MVP → Early)
 
+- [ ] Redeploy success-criteria remediation to DO
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] Optional LangSmith keys on DO for redacted-trace screenshot
-- [ ] Eval suite thin + demo video / cost analysis — interview narrative prioritized
+- [ ] Fill L2 load baseline after k6 run; demo video (A7) + social (A10 final)
 
 ## Known issues
 

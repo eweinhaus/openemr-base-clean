@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 namespace OpenEMR\ClinicalCopilot\Chart;
 
+use OpenEMR\Common\Uuid\UuidRegistry;
+
 final readonly class ChartFact
 {
     public function __construct(
@@ -23,6 +25,24 @@ final readonly class ChartFact
         public string $excerpt,
         public ?string $fhirUuid = null,
     ) {
+    }
+
+    /**
+     * Convert a row uuid (string UUID or binary(16)) to a string FHIR id when present.
+     */
+    public static function uuidFromRowValue(mixed $raw): ?string
+    {
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+        if (preg_match('/^[0-9a-fA-F-]{36}$/', $raw) === 1) {
+            return strtolower($raw);
+        }
+        if (strlen($raw) === 16) {
+            return UuidRegistry::uuidToString($raw);
+        }
+
+        return null;
     }
 
     /**

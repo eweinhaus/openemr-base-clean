@@ -1,0 +1,33 @@
+meta {
+  name: Stream SSE
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{openemrBaseUrl}}/interface/ask_copilot/stream.php
+  body: formUrlEncoded
+  auth: none
+}
+
+headers {
+  Accept: text/event-stream
+  Cookie: {{sessionCookie}}
+}
+
+body:form-urlencoded {
+  csrf_token_form: {{csrfToken}}
+  message: Show recent labs
+  transcript: []
+}
+
+docs {
+  ## Gateway SSE (session + CSRF)
+
+  Physician path: browser → OpenEMR only. Proxies hybrid SSE from the LangGraph sidecar
+  (`progress` → `clinical` → `citation` → `done`, or `error`).
+
+  - Auth: logged-in OpenEMR session cookie + `csrf_token_form`
+  - Client `pid` (if sent) is ignored; bind comes from session
+  - Message max length 4000
+}

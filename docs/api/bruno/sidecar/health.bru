@@ -1,0 +1,22 @@
+meta {
+  name: Health
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{sidecarBaseUrl}}/health
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  ## Sidecar liveness
+
+  Always cheap. Compose healthchecks use `/health` only (never `/ready`) so OpenRouter
+  blips do not restart the worker.
+}

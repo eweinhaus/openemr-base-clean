@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import re
 from typing import Any, Mapping
 from xml.etree.ElementTree import Element
@@ -125,18 +126,26 @@ def build_research_tool_result(
     query_term: str,
     source: str,
     set_id: str,
+    retrieved_at: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the ``research_label`` tool_results payload for tools_node."""
+    stamp = retrieved_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamped_facts: list[dict[str, str]] = []
+    for fact in facts:
+        row = dict(fact)
+        row.setdefault("retrieved_at", stamp)
+        stamped_facts.append(row)
     return {
         "ok": True,
         "tool": RESEARCH_TOOL_NAME,
         "data": {
-            "facts": facts,
+            "facts": stamped_facts,
             "meta": {
                 "on_chart": on_chart,
                 "query_term": query_term,
                 "source": source,
                 "set_id": set_id,
+                "retrieved_at": stamp,
             },
         },
     }

@@ -1,0 +1,24 @@
+meta {
+  name: Schedule today
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{openemrBaseUrl}}/interface/ask_copilot/schedule.php?csrf_token_form={{csrfToken}}
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+  Cookie: {{sessionCookie}}
+}
+
+docs {
+  ## Provider day schedule (patient picker)
+
+  GET JSON for today's appointments for the authenticated provider.
+  Provider id and date are taken from session / server timezone only — never from query params.
+  Bad CSRF → 403.
+}
