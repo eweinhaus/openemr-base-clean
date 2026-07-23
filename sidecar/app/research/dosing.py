@@ -10,7 +10,12 @@ _DOSING_LIKE = re.compile(
     r"how\s+much|how\s+many\s+mg|"
     r"mg\s*/?\s*kg|"
     r"adult\s+dose|typical\s+dose|starting\s+dose|usual\s+dose|"
-    r"what\s+(?:is\s+)?(?:the\s+)?dose"
+    r"what\s+(?:is\s+)?(?:the\s+)?dose|"
+    r"replace(?:\s+\S+){0,8}?\s+with|"
+    r"switch(?:ing)?(?:\s+from)?|"
+    r"substitut(?:e|ing|ion)|"
+    r"convert(?:ing)?(?:\s+to)?|"
+    r"equivalent\s+(?:to|dose)"
     r")\b",
     re.IGNORECASE,
 )
@@ -23,15 +28,27 @@ _PRESCRIBING_RECOMMENDATION_LIKE = re.compile(
     r"start\s+(?:a\s+)?med(?:ication)?s?|"
     r"should\s+(?:i|we)\s+(?:prescrib|add|start)|"
     r"(?:any|what)\s+(?:new\s+)?med(?:ication)?s?\s+(?:to|should|can|could)|"
-    r"options?\s+(?:for|to)\s+(?:prescrib|add|start|treat)"
-    r")\b",
+    r"options?\s+(?:for|to)\s+(?:prescrib|add|start|treat)|"
+    r"replace(?:\s+\S+){0,8}?\s+with|"
+    r"switch(?:ing)?(?:\s+(?:from|to))?|"
+    r"substitut(?:e|ing|ion)"
+    r")\b|"
+    r"(?:is|would)\s+it\s+(?:be\s+)?reasonable\s+(?:to\s+)?"
+    r"(?:replace|switch|substitut|change|add|start|prescrib)",
     re.IGNORECASE,
 )
+
+_SWITCH_MG_BOOSTER = re.compile(r"\b(replace|switch|substitut)\b", re.IGNORECASE)
+_MG_BOOSTER = re.compile(r"\b\d+\s*mg\b", re.IGNORECASE)
 
 
 def is_dosing_like(message: str) -> bool:
     """Return True when ``message`` asks about dosing / titration intent."""
-    return _DOSING_LIKE.search(message) is not None
+    if _DOSING_LIKE.search(message) is not None:
+        return True
+    if _SWITCH_MG_BOOSTER.search(message) and _MG_BOOSTER.search(message):
+        return True
+    return False
 
 
 def is_prescribing_recommendation_like(message: str) -> bool:

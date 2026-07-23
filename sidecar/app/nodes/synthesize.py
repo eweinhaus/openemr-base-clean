@@ -508,6 +508,50 @@ def _preview(text: str, limit: int = 180) -> str:
     return collapsed[: limit - 1] + "…"
 
 
+_SYNTHESIS_FAILURE_MESSAGES: dict[str, str] = {
+    "novel_numeric": (
+        "doing so would require doses or numbers that aren't documented in the "
+        "chart or drug labels below"
+    ),
+    "too_long": (
+        "the answer was too long to display safely; review the chart facts below"
+    ),
+    "empty": (
+        "there wasn't enough on the chart to write a reply; review the sources below"
+    ),
+    "no_verified_texts": (
+        "there wasn't enough chart information to answer; review what's below"
+    ),
+    "parse_failed": (
+        "I wasn't able to put together a readable reply from the chart; expand "
+        "the sources below to review what's on file"
+    ),
+    "llm_unavailable": (
+        "the service is temporarily unavailable; try again shortly, or review "
+        "the chart facts below"
+    ),
+    "llm_http_error": (
+        "the service is temporarily unavailable; try again shortly, or review "
+        "the chart facts below"
+    ),
+    "llm_not_configured": (
+        "answer generation isn't available right now; review the chart facts below"
+    ),
+    "llm_empty_response": (
+        "I couldn't generate a reply for this question; review the chart facts below"
+    ),
+}
+
+
+def format_synthesis_failure_line(reason_code: str) -> str:
+    """Build a visible assembly line when post-verify synthesis fails."""
+    detail = _SYNTHESIS_FAILURE_MESSAGES.get(
+        reason_code,
+        "I couldn't produce a safe answer from the chart; review the sources below",
+    )
+    return f"I couldn't answer this question — {detail}."
+
+
 def synthesize_node(state: GraphState) -> dict[str, object]:
     correlation_id = state.get("correlation_id", "")
     set_correlation_id(correlation_id or None)
@@ -553,7 +597,9 @@ def synthesize_node(state: GraphState) -> dict[str, object]:
                 correlation_id,
                 _preview(raw or ""),
             )
-            return {}
+            return {
+                "synthesis_failure_line": format_synthesis_failure_line("parse_failed"),
+            }
 
         report = diagnose_guard_summary(summary, verified_texts)
         if not report.ok:
@@ -572,7 +618,9 @@ def synthesize_node(state: GraphState) -> dict[str, object]:
                 _preview(summary),
                 correlation_id,
             )
-            return {}
+            return {
+                "synthesis_failure_line": format_synthesis_failure_line(report.reason),
+            }
 
         if report.novel_tokens:
             logger.info(
@@ -584,14 +632,17 @@ def synthesize_node(state: GraphState) -> dict[str, object]:
                 correlation_id,
             )
     except LlmError as exc:
+        error_code = getattr(exc, "code", "llm_unavailable")
         logger.warning(
             "Turn synthesis LLM failed route=%s error_type=%s error_code=%s correlation_id=%s",
             route,
             type(exc).__name__,
-            getattr(exc, "code", "llm_unavailable"),
+            error_code,
             correlation_id,
         )
-        return {}
+        return {
+            "synthesis_failure_line": format_synthesis_failure_line(str(error_code)),
+        }
 
     return {
         "progress_messages": [PROGRESS_SUMMARIZING],

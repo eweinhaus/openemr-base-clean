@@ -380,6 +380,7 @@ def build_clinical_payload(
     requested_tools: list[str] | None = None,
     message: str = "",
     turn_summary: str | None = None,
+    synthesis_failure_line: str | None = None,
 ) -> dict[str, Any]:
     """Build flat clinical ``text`` plus ordered ``segments`` (PRD 06 + 08/10).
 
@@ -399,6 +400,13 @@ def build_clinical_payload(
 
     segments: list[dict[str, Any]] = []
     summary_text = turn_summary.strip() if isinstance(turn_summary, str) else ""
+    failure_line = (
+        synthesis_failure_line.strip()
+        if isinstance(synthesis_failure_line, str)
+        else ""
+    )
+    if not summary_text and failure_line:
+        assembly_lines.insert(0, failure_line)
     if summary_text:
         segments.append({"kind": "summary", "text": summary_text})
     for index, claim in enumerate(verified, start=1):

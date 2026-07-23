@@ -162,3 +162,52 @@ def test_resolve_result_ok_query_is_drug_query() -> None:
     assert result is not None
     assert result.status is ResolveStatus.OK
     assert isinstance(result.query, DrugQuery)
+
+
+def test_switch_resolves_target_not_source() -> None:
+    """PRD 11: replace X with Y → research target (proposed) drug, not chart source."""
+    message = (
+        "Would it be reasonable to replace simvastatin 20 mg with "
+        "atorvastatin 40 mg orally once daily?"
+    )
+    facts = [
+        {
+            "text": "Simvastatin 20 MG Oral Tablet (RxNorm 312961)",
+            "table": "prescriptions",
+            "id": "12",
+        }
+    ]
+
+    result = resolve_drug_query(message, facts)
+
+    assert result is not None
+    assert result.status is ResolveStatus.OK
+    assert result.query is not None
+    assert result.query.term.lower() == "atorvastatin"
+    assert result.query.on_chart is False
+    assert result.query.blocked is False
+    assert result.query.rxcui is None
+
+
+def test_switch_target_on_chart_when_proposed_drug_is_active_rx() -> None:
+    message = "replace atorvastatin with simvastatin"
+    facts = [
+        {
+            "text": "Atorvastatin 40 MG Oral Tablet (RxNorm 617312)",
+            "table": "prescriptions",
+            "id": "20",
+        },
+        {
+            "text": "Simvastatin 20 MG Oral Tablet",
+            "table": "prescriptions",
+            "id": "12",
+        },
+    ]
+
+    result = resolve_drug_query(message, facts)
+
+    assert result is not None
+    assert result.status is ResolveStatus.OK
+    assert result.query is not None
+    assert result.query.term.lower() == "simvastatin"
+    assert result.query.on_chart is True

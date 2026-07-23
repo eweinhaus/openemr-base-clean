@@ -43,6 +43,8 @@ class GraphState(TypedDict, total=False):
     refusals: Annotated[list[Refusal], operator.add]
     # Route narrative paragraph (unverified; PRD 08/10); prepended in emit assembly.
     turn_summary: Optional[str]
+    # Physician-facing line when synthesis was attempted but produced no summary.
+    synthesis_failure_line: Optional[str]
     clinical_text: str
     # Ordered clinical segments (claim + assembly) for SSE; paired with citations (PRD 06).
     clinical_segments: list[dict[str, Any]]

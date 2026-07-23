@@ -29,7 +29,7 @@ ROUTE_SYSTEM_PROMPT = (
     "Reply with only one word: brief, labs, or meds. "
     "brief = general chart summary or overview. "
     "labs = laboratory results or values. "
-    "meds = medications or prescriptions. "
+    "meds = medications, prescriptions, dosing, switches, or replacements. "
     "If intent is mixed or unclear, pick the primary intent."
 )
 
@@ -65,7 +65,10 @@ MEDS_DRAFT_ADDENDUM = (
     "locators when present; never claim off-chart drugs as patient Rx. "
     "For add/prescribe/recommendation questions: still include verified active Rx "
     "and allergy facts from tool results; do not invent new drug recommendations "
-    "as chart claims."
+    "as chart claims. "
+    "For switch/replace questions: include research_label locators for the "
+    "proposed (target) drug when tool facts exist; never claim the target drug "
+    "as a prescriptions chart Rx when it is not on the active list."
 )
 
 SYNTHESIZE_SYSTEM_PROMPT = (
@@ -100,6 +103,10 @@ SYNTHESIZE_MEDS_SYSTEM_PROMPT = (
     "For add/prescribe/recommendation questions: state that new prescriptions "
     "cannot be recommended from the chart alone; summarize verified current "
     "medications and relevant allergies/conditions only. "
+    "For switch/replace questions: summarize verified current Rx from chart facts "
+    "and verified research facts for the proposed drug only; do not state whether "
+    "the switch is appropriate; do not repeat dose numbers from the user question "
+    "unless the identical number appears in verified fact text. "
     "For dosing questions: paraphrase only verified chart and research dose facts; "
     "do not invent dosing. Never replace or duplicate decision-support disclaimers, "
     "not-on-list lines, or refusal copy — those appear separately in assembly. "

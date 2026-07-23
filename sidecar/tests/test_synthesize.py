@@ -288,7 +288,12 @@ def test_synthesize_node_omits_turn_summary_on_labs_guard_fail(
     )
 
     assert "turn_summary" not in result
-    assert result == {}
+    assert result == {
+        "synthesis_failure_line": (
+            "I couldn't answer this question — doing so would require doses or numbers "
+            "that aren't documented in the chart or drug labels below."
+        ),
+    }
 
 
 def test_synthesize_node_omits_summary_on_guard_fail(
@@ -314,7 +319,12 @@ def test_synthesize_node_omits_summary_on_guard_fail(
             "requested_tools": ["patient_context", "labs", "meds", "notes"],
         }
     )
-    assert result == {}
+    assert result == {
+        "synthesis_failure_line": (
+            "I couldn't answer this question — doing so would require doses or numbers "
+            "that aren't documented in the chart or drug labels below."
+        ),
+    }
 
 
 def test_synthesize_node_omits_summary_on_llm_error(
@@ -338,7 +348,56 @@ def test_synthesize_node_omits_summary_on_llm_error(
             "requested_tools": ["patient_context", "labs", "meds", "notes"],
         }
     )
-    assert result == {}
+    assert result == {
+        "synthesis_failure_line": (
+            "I couldn't answer this question — the service is temporarily unavailable; "
+            "try again shortly, or review the chart facts below."
+        ),
+    }
+
+
+def test_format_synthesis_failure_line_maps_guard_reasons() -> None:
+    from sidecar.app.nodes.synthesize import format_synthesis_failure_line
+
+    assert format_synthesis_failure_line("novel_numeric") == (
+        "I couldn't answer this question — doing so would require doses or numbers "
+        "that aren't documented in the chart or drug labels below."
+    )
+    assert format_synthesis_failure_line("parse_failed") == (
+        "I couldn't answer this question — I wasn't able to put together a readable "
+        "reply from the chart; expand the sources below to review what's on file."
+    )
+    assert format_synthesis_failure_line("unknown_code") == (
+        "I couldn't answer this question — I couldn't produce a safe answer from the "
+        "chart; review the sources below."
+    )
+
+
+def test_build_clinical_payload_prepends_synthesis_failure_line_when_no_summary() -> None:
+    from sidecar.app.claims import Claim, Locator, build_clinical_payload
+
+    verified = [
+        Claim(
+            text="Simvastatin 20 MG Oral Tablet 1.00",
+            source_type="chart",
+            locator=Locator(table="prescriptions", id="1"),
+        )
+    ]
+    failure = (
+        "I couldn't answer this question — doing so would require doses or numbers "
+        "that aren't documented in the chart or drug labels below."
+    )
+    payload = build_clinical_payload(
+        verified,
+        [],
+        synthesis_failure_line=failure,
+    )
+    assembly_texts = [
+        s["text"] for s in payload["segments"] if s["kind"] == "assembly"
+    ]
+    assert assembly_texts[0] == failure
+    assert failure in payload["text"]
+    assert payload["segments"][0]["kind"] == "claim"
 
 
 def test_build_domain_context_for_synthesis_flags_empty_notes() -> None:

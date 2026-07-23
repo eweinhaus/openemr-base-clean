@@ -492,6 +492,40 @@ def test_prescribing_recommendation_assembly_includes_scope_and_disclaimer() -> 
     assert DECISION_SUPPORT_DISCLAIMER in assembly_texts
 
 
+def test_switch_question_assembly_includes_scope_and_disclaimer() -> None:
+    message = (
+        "Would it be reasonable to replace simvastatin 20 mg with "
+        "atorvastatin 40 mg orally once daily?"
+    )
+    payload = build_clinical_payload(
+        [],
+        [],
+        tool_results=[
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Simvastatin 20 MG Oral Tablet",
+                            "table": "prescriptions",
+                            "id": "201",
+                        }
+                    ],
+                    "meta": {"active_med_count": 1, "allergy_count": 0},
+                },
+            }
+        ],
+        requested_tools=["meds"],
+        message=message,
+    )
+    assembly_texts = [
+        s["text"] for s in payload["segments"] if s["kind"] == "assembly"
+    ]
+    assert PRESCRIBING_RECOMMENDATION_SCOPE in assembly_texts
+    assert DECISION_SUPPORT_DISCLAIMER in assembly_texts
+
+
 def test_fallback_verified_claims_for_prescribing_injects_rx_and_allergy() -> None:
     from sidecar.app.claims import fallback_verified_claims_for_prescribing
 

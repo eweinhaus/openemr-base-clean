@@ -2,6 +2,13 @@
 
 ## Current focus
 
+**PRD 11 intent detection extensions (2026-07-23):** Widened deterministic
+regex in `dosing.py` (switch/replace/reasonable-to-change-med) and switch-target
+resolve in `resolve.py` (research proposed drug, not chart source). Meds LLM
+prompts updated for switch/replace synthesis. Tier 2b `synthesis_failure_line`
+path confirmed (uncommitted prior session). Sidecar pytest **246**. Manual M1–M4
+not run this session.
+
 **PRD 10 conversational synthesis all routes (2026-07-23):** Generalized post-verify
 synthesis to `brief`, `labs`, `meds` when verified > 0. Renamed `brief_summary` →
 `turn_summary`. Route-specific labels + prompts; `Summarizing…` progress. Ask Co-Pilot
@@ -79,7 +86,8 @@ fallback chart facts + scope disclaimers; synthesis drops route prefix labels;
 assembly-only turns skip collapsed sources toggle; sidecar healthy; `/ready` true;
 OpenRouter set; module re-enabled; login HTTP 200. SSH smoke only this session.
 
-**Next:** Manual PRD 10 smoke M1–M5 local + DO browser (§12); demo video (A7).
+**Next:** Manual PRD 11 smoke M1–M4 (pid 6 switch + regressions); commit PRD 11 +
+Tier 2b; redeploy sidecar to DO; manual PRD 10 M1–M5.
 
 ## PRD 07 decisions (locked — implemented)
 

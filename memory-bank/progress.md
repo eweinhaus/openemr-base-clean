@@ -81,6 +81,12 @@
 - [x] **DO redeploy prescribing UX (2026-07-23):** commit `4eb9f5a` — sidecar
   rebuild; `/ready` true; OpenRouter set; module active; SSH smoke OK (login 200,
   health, mounts).
+- [x] **PRD 11 intent detection extensions (2026-07-23):** switch/replace regex
+  in `dosing.py`; switch-target resolve reorder in `resolve.py`; meds synthesize +
+  draft prompt tweaks in `llm.py`; integration tests tools/verify/assembly;
+  Tier 2b `synthesis_failure_line` confirmed; sidecar pytest **246**.
+- [ ] Manual PRD 11 smoke M1–M4 local (pid 6 switch + meds list/dosing regressions)
+- [ ] Commit PRD 11 + Tier 2b; redeploy sidecar to DO
 - [ ] Manual PRD 10 smoke M1–M5 local (pid 6 brief/labs/meds + dosing disclaimer)
 - [ ] Public DO browser smoke (`docs/local-demo-success-criteria.md` §12 on 142.93.255.212)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO

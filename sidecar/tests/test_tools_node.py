@@ -458,3 +458,58 @@ def test_meds_dosing_fetch_raises_keeps_chart_no_error(
     tools = [r["tool"] for r in result["tool_results"]]
     assert "meds" in tools
     assert RESEARCH_TOOL_NAME not in tools
+
+
+def test_meds_switch_message_researches_target_drug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PRD 11: switch question → research HTTP uses proposed (target) drug term."""
+    captured_terms: list[str] = []
+    openfda_result = {
+        "openfda": {
+            "generic_name": ["ATORVASTATIN"],
+            "brand_name": ["LIPITOR"],
+            "spl_set_id": ["ator-set-id"],
+            "product_type": ["HUMAN PRESCRIPTION DRUG"],
+        },
+        "dosage_and_administration": [
+            "The usual dosage range is 10 to 80 mg/day."
+        ],
+    }
+
+    def _fake_fetch(query: Any, *, correlation_id: str = "") -> LabelFetchResult:
+        captured_terms.append(query.term.lower())
+        assert correlation_id == "corr-switch"
+        return LabelFetchResult(
+            ok=True,
+            source="openfda",
+            set_id="ator-set-id",
+            outcome="hit_openfda",
+            openfda_result=openfda_result,
+            generic_names=("ATORVASTATIN",),
+            brand_names=("LIPITOR",),
+        )
+
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+
+    switch_message = (
+        "Would it be reasonable to replace simvastatin 20 mg with "
+        "atorvastatin 40 mg orally once daily?"
+    )
+    node = make_tools_node(_ok_meds_gateway())
+    result = node(
+        {
+            "pid": 6,
+            "user_id": 1,
+            "correlation_id": "corr-switch",
+            "route": "meds",
+            "message": switch_message,
+        }
+    )
+
+    assert "error" not in result
+    assert captured_terms == ["atorvastatin"]
+    research = [r for r in result["tool_results"] if r["tool"] == RESEARCH_TOOL_NAME]
+    assert len(research) == 1
+    assert research[0]["ok"] is True
+    assert research[0]["data"]["meta"]["on_chart"] is False

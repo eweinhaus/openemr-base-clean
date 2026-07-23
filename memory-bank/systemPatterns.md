@@ -94,7 +94,8 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - Sidecar-only (`sidecar/app/research/`) — never via `tool_proxy`
 - openFDA primary → DailyMed fallback on miss/timeout/5xx/empty dose; ≤5s; no retries
 - Outbound: scrubbed `DrugQuery` / RxCUI digits only — never raw user message or PHI
-- `meds` route + dosing-like only (`is_dosing_like` shared by tools + verify); uncertain RxNorm blocks HTTP
+- `meds` route + dosing-like only (`is_dosing_like` shared by tools + verify; PRD 11 adds switch/replace/reasonable phrasings); uncertain RxNorm blocks HTTP
+- Switch resolve (PRD 11): target drug captured before chart substring match — researches proposed agent (e.g. atorvastatin), not source (simvastatin)
 - Off-chart named drug allowed if single Rx SPL; assembly not-on-list line required
 - Brand↔generic post-hit may reconcile `on_chart=true`
 - Miss: cited chart + refuse unsupported dosing (partial turn OK; not SSE `error`)

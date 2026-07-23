@@ -870,3 +870,138 @@ def test_verify_prescribing_recommendation_injects_fallback_chart_facts() -> Non
     assert len(verified) == 1
     assert verified[0].text == "Simvastatin 20 MG Oral Tablet"
     assert verified[0].locator.table == "prescriptions"
+
+
+# --- PRD 11 switch/replace verify paths --------------------------------------
+
+
+_SWITCH_MESSAGE = (
+    "Would it be reasonable to replace simvastatin 20 mg with "
+    "atorvastatin 40 mg orally once daily?"
+)
+
+
+def test_verify_switch_hit_skips_no_research() -> None:
+    from sidecar.app.nodes.verify import verify_node
+
+    set_id = "ator-set"
+    fact_id = f"{set_id}:dosage_and_administration"
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="model prose",
+                source_type="research",
+                locator=Locator(table="openfda", id=fact_id),
+            ),
+            Claim(
+                text="Simvastatin 20 MG Oral Tablet",
+                source_type="chart",
+                locator=Locator(table="prescriptions", id="12"),
+            ),
+        ],
+        refusals=[],
+    )
+    state = {
+        "message": _SWITCH_MESSAGE,
+        "correlation_id": "switch-hit",
+        "draft_claims": draft,
+        "tool_results": [
+            {
+                "ok": True,
+                "tool": RESEARCH_TOOL_NAME,
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Usual adult dose 10 to 80 mg once daily.",
+                            "table": "openfda",
+                            "id": fact_id,
+                            "excerpt": "openFDA label",
+                        }
+                    ],
+                    "meta": {
+                        "on_chart": False,
+                        "query_term": "atorvastatin",
+                        "source": "openfda",
+                        "set_id": set_id,
+                    },
+                },
+            }
+        ],
+    }
+
+    out = verify_node(state)
+
+    assert any(c.source_type == "research" for c in out["verified_claims"])
+    assert all(r.code != DOSING_REFUSAL.code for r in out["refusals"])
+
+
+def test_verify_switch_miss_appends_no_research() -> None:
+    from sidecar.app.nodes.verify import verify_node
+
+    draft = DraftClaims(
+        claims=[
+            Claim(
+                text="Simvastatin 20 MG Oral Tablet",
+                source_type="chart",
+                locator=Locator(table="prescriptions", id="12"),
+            )
+        ],
+        refusals=[],
+    )
+    state = {
+        "message": _SWITCH_MESSAGE,
+        "correlation_id": "switch-miss",
+        "draft_claims": draft,
+        "tool_results": [
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Simvastatin 20 MG Oral Tablet",
+                            "table": "prescriptions",
+                            "id": "12",
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+
+    out = verify_node(state)
+
+    assert len(out["verified_claims"]) >= 1
+    assert any(r.code == DOSING_REFUSAL.code for r in out["refusals"])
+
+
+def test_verify_switch_empty_draft_injects_prescribing_fallback() -> None:
+    from sidecar.app.nodes.verify import verify_node
+
+    state = {
+        "message": _SWITCH_MESSAGE,
+        "correlation_id": "switch-fallback",
+        "draft_claims": DraftClaims(claims=[], refusals=[]),
+        "tool_results": [
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Simvastatin 20 MG Oral Tablet",
+                            "table": "prescriptions",
+                            "id": "201",
+                        }
+                    ],
+                    "meta": {"active_med_count": 1, "allergy_count": 0},
+                },
+            }
+        ],
+    }
+
+    out = verify_node(state)
+    verified = out["verified_claims"]
+    assert len(verified) == 1
+    assert verified[0].text == "Simvastatin 20 MG Oral Tablet"
+    assert verified[0].locator.table == "prescriptions"

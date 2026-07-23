@@ -17,6 +17,15 @@ _DOSE_OF_CAPTURE = re.compile(
     re.IGNORECASE,
 )
 
+# Switch/replace target drug (token after with/to) — message only (PRD 11).
+_SWITCH_TARGET_CAPTURE = re.compile(
+    r"(?:replace|switch(?:ing)?(?:\s+from)?|substitut(?:e|ing))\s+"
+    r"(?:\S+\s+){0,8}?"
+    r"(?:with|to)\s+"
+    r"([A-Za-z][A-Za-z0-9\-/ ]{1,40})",
+    re.IGNORECASE,
+)
+
 # Labeled RxCUI / RxNorm digits in fact text (never invent from bare ids).
 _RXCUI_LABELED = re.compile(
     r"(?i)\b(?:rxnorm|rxcui)\s*[:#]?\s*(\d{4,})\b",
@@ -35,6 +44,19 @@ _FORM_STRENGTH_TOKENS = frozenset(
         "meq",
         "mmol",
         "oral",
+        "orally",
+        "once",
+        "twice",
+        "daily",
+        "weekly",
+        "monthly",
+        "every",
+        "bedtime",
+        "bid",
+        "tid",
+        "qd",
+        "qhs",
+        "prn",
         "tablet",
         "tablets",
         "tab",
@@ -122,6 +144,50 @@ def resolve_drug_query(
     """
     if not is_dosing_like(message):
         return None
+
+    switch_target = _capture_switch_target_term(message)
+    if switch_target is not None:
+        scrubbed = scrub_query_term(switch_target)
+        if scrubbed is None:
+            return ResolveResult(status=ResolveStatus.NONE, query=None)
+        chart_match = _match_prescription_by_display_name(switch_target, meds_facts)
+        if chart_match is not None:
+            fact, display_name, uncertain = chart_match
+            if uncertain:
+                return ResolveResult(
+                    status=ResolveStatus.BLOCKED,
+                    query=DrugQuery(
+                        term=scrubbed,
+                        rxcui=None,
+                        on_chart=True,
+                        blocked=True,
+                        display_name=display_name,
+                        matched_fact_id=_as_str(fact.get("id")) or None,
+                    ),
+                )
+            rxcui = _extract_rxcui(fact)
+            return ResolveResult(
+                status=ResolveStatus.OK,
+                query=DrugQuery(
+                    term=scrubbed,
+                    rxcui=rxcui,
+                    on_chart=True,
+                    blocked=False,
+                    display_name=display_name,
+                    matched_fact_id=_as_str(fact.get("id")) or None,
+                ),
+            )
+        return ResolveResult(
+            status=ResolveStatus.OK,
+            query=DrugQuery(
+                term=scrubbed,
+                rxcui=None,
+                on_chart=False,
+                blocked=False,
+                display_name=switch_target,
+                matched_fact_id=None,
+            ),
+        )
 
     chart_match = _match_prescription_in_message(message, meds_facts)
     if chart_match is not None:
@@ -234,6 +300,35 @@ def _match_prescription_in_message(
     return best
 
 
+def _match_prescription_by_display_name(
+    display_name: str,
+    meds_facts: Sequence[Mapping[str, Any]],
+) -> tuple[Mapping[str, Any], str, bool] | None:
+    """Return prescriptions-table match when ``display_name`` appears in Rx text."""
+    target_l = display_name.lower()
+    best: tuple[Mapping[str, Any], str, bool] | None = None
+    best_len = 0
+
+    for fact in meds_facts:
+        if _as_str(fact.get("table")) != _PRESCRIPTIONS_TABLE:
+            continue
+        text = _as_str(fact.get("text"))
+        if not text:
+            continue
+        uncertain = text.endswith(UNCERTAIN_RXNORM_SUFFIX)
+        core = text[: -len(UNCERTAIN_RXNORM_SUFFIX)] if uncertain else text
+        display = _display_name_from_fact_text(core)
+        if not display:
+            continue
+        if display.lower() != target_l and target_l not in text.lower():
+            continue
+        if len(display) > best_len:
+            best = (fact, display, uncertain)
+            best_len = len(display)
+
+    return best
+
+
 def _display_name_from_fact_text(text: str) -> str:
     """Strip dosage/instructions/form tokens → human drug name for matching."""
     # Instructions after em dash are not part of the display name.
@@ -266,6 +361,17 @@ def _capture_dose_of_term(message: str) -> str | None:
     raw = match.group(1).strip()
     raw = _TRAILING_PUNCT.sub("", raw).strip()
     # Prefer leading drug tokens; drop trailing strength/form noise.
+    display = _display_name_from_fact_text(raw)
+    return display or None
+
+
+def _capture_switch_target_term(message: str) -> str | None:
+    """Extract proposed drug name from switch/replace phrasing (message only)."""
+    match = _SWITCH_TARGET_CAPTURE.search(message)
+    if match is None:
+        return None
+    raw = match.group(1).strip()
+    raw = _TRAILING_PUNCT.sub("", raw).strip()
     display = _display_name_from_fact_text(raw)
     return display or None
 

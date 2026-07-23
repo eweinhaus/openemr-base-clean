@@ -29,6 +29,7 @@ def emit_node(state: GraphState) -> dict[str, object]:
         requested_tools=requested,
         message=state.get("message", "") or "",
         turn_summary=state.get("turn_summary"),
+        synthesis_failure_line=state.get("synthesis_failure_line"),
     )
     citations = build_citation_records(verified, tool_results=tool_results)
 
