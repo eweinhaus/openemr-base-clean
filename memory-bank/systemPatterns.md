@@ -129,3 +129,15 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - Single DO NYC droplet, Docker Compose at `/opt/openemr`
 - OpenEMR + MariaDB + **one** LangGraph worker; document concurrency limits
 - Demo creds / no DB TLS / self-signed HTTPS = documented Gauntlet posture
+
+## Local demo setup pattern (2026-07-23)
+
+- **Checklist:** `docs/local-demo-success-criteria.md` (§0–§9 pass/fail for interview-ready local stack)
+- **Canonical scripts:** `scripts/copilot/`
+  - `enable-module.sql` — idempotent Ask Co-Pilot module registration
+  - `seed-local-demo.sql` — today's `CoPilot Demo%` appts + missing-RxNorm Lisinopril (Susan Underwood or pid 2)
+  - `setup-local-demo.sh` — runs both against dev MariaDB; `--seed-only` / `--enable-only`
+- **Auto on stack start:** `start-openemr` skill calls setup after healthy (skip: `COPILOT_SKIP_SETUP=1`)
+- **Synthea first:** `openemr-cmd import-random-patients` for rich pid 6 chart; seeds assume pids 6/8/2 when those rows exist
+- **Sidecar dev QA:** loopback `127.0.0.1:8080` (`WT_COPILOT_SIDECAR_PORT`); browser UI still session-proxies via `stream.php` only
+- **DO packaging:** `package.sh` copies `enable_ask_copilot.sql` + `seed_local_demo.sql` from `scripts/copilot/`

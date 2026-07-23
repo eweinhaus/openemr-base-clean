@@ -6,7 +6,10 @@ import os
 
 import pytest
 
-os.environ.setdefault("COPILOT_INTERNAL_SECRET", "test-secret-for-pytest")
+# Align with docs/local-demo-success-criteria.md §9 (T-1): same env var as runtime.
+os.environ.setdefault("COPILOT_INTERNAL_SECRET", "test-secret")
+
+TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 
 
 @pytest.fixture(autouse=True)

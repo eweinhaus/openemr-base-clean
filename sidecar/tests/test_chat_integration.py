@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -27,7 +28,7 @@ from sidecar.app.state import (
     UNBOUND_MESSAGE,
 )
 
-TEST_SECRET = "test-secret-for-pytest"
+TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 DOSING_REFUSAL_TEXT = DOSING_REFUSAL.text
 
 

@@ -5,6 +5,8 @@
 - Path: `docker/development-easy` → `docker compose up --detach --wait`
 - App: http://localhost:8300/ · login `admin` / `pass`
 - Tooling: `openemr-cmd` for tests / php-log / Synthea import
+- **Co-Pilot bootstrap:** `scripts/copilot/setup-local-demo.sh` (module enable + demo seeds); auto via start-openemr skill unless `COPILOT_SKIP_SETUP=1`
+- **Sidecar QA (dev):** `curl http://127.0.0.1:8080/health` / `/ready` (loopback-only port; override `WT_COPILOT_SIDECAR_PORT`)
 
 ## Public deploy (live)
 
@@ -26,7 +28,8 @@ HTTPS self-signed on bare IP. No DB TLS / MFA on public demo (documented gaps).
 
 - Example SQL = demographics only — **insufficient**
 - Synthea: `openemr-cmd import-random-patients` ≈ **5–10** on **local and DO**
-- Verify FHIR UUIDs; confirm `rxnorm_drugcode` after CCDA import (may need one free-text med for uncertainty demo)
+- Verify FHIR UUIDs; confirm `rxnorm_drugcode` after CCDA import
+- **Local seeds:** `scripts/copilot/setup-local-demo.sh` — picker appts (pids 6/8/2) + Lisinopril empty RxNorm on Susan Underwood/pid 2; re-run `--seed-only` after calendar day roll
 
 ## Agent stack (locked)
 
@@ -66,4 +69,5 @@ Branch: `main` → `origin/main`.
 - `docs/architecture-overview.md` — diagrams companion
 - `docs/architecture-tech-primer.md` — study guide (decisions now locked)
 - `docs/PRDs/01`–`07` — vertical-slice PRDs (`07-observability-langsmith.md` coded)
+- `docs/local-demo-success-criteria.md` — local QA sign-off checklist
 - `CLAUDE.md` / `CONTRIBUTING.md` — OpenEMR conventions

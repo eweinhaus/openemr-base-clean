@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +14,7 @@ from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
 from sidecar.app.errors import ERROR_SIDECAR_UNREADY, message_for_code
 from sidecar.app.main import app
 
-TEST_SECRET = "test-secret-for-pytest"
+TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 
 
 def test_health_returns_200_ok() -> None:

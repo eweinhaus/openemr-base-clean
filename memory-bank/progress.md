@@ -37,10 +37,17 @@
 - [x] **PRD 07 on DO (2026-07-22):** commit `517f95a`; disclosure `verify` join smoked.
 - [x] **PRD 4–7 review hardening (2026-07-22):** readiness cache + soft OpenRouter `/models`; `InternalEndpointGuard`; research body cap + `defusedxml`; no model excerpt fallback; research redirects. Sidecar pytest **161**. Commit `8b3f4d8`.
 - [x] **Success-criteria remediation (2026-07-22):** allergy contradiction; meds+conditions route; citation `retrieved_at`/`fhir_uuid`; `/ready` 503; `wrap_openai`; Bruno API; eval catalog+164 pytest recorded; cost analysis; k6 scaffold; conflict docs aligned to deferred MVP.
+- [x] **`docs/local-demo-success-criteria.md`** — local QA checklist (§0–§14); replaces deleted success-criteria docs.
+- [x] **Static QA audit (2026-07-23):** code review vs local demo criteria — spine/auth/verify/streaming coded; setup gaps identified.
+- [x] **Local demo setup scripts (2026-07-23):** `scripts/copilot/` (`enable-module.sql`, `seed-local-demo.sql`, `setup-local-demo.sh`); start-openemr auto-runs setup; dev sidecar loopback `:8080`; criteria doc P-3/P-8/§11 updated.
 
 ## Remaining (MVP → Early)
 
-- [ ] Redeploy success-criteria remediation to DO
+- [x] **Local demo QA blockers fixed (2026-07-23):** U1-5 citation popup,
+  U3-4/F-2 uncertain RxNorm assembly, U3-6 off-chart line, T-1 pytest secret
+  alignment — Panther 43 pass / pytest 165 pass.
+- [ ] Manual local demo smoke (`docs/local-demo-success-criteria.md` §12) + §9 automated gate
+- [ ] Redeploy success-criteria remediation + setup scripts to DO
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] Optional LangSmith keys on DO for redacted-trace screenshot
@@ -50,7 +57,7 @@
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
 - **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
-- **DO/local `CoPilot Demo%` appts** need re-seed after calendar day roll (UTC on droplet)
+- **DO/local `CoPilot Demo%` appts** — re-seed daily via `scripts/copilot/setup-local-demo.sh --seed-only` (idempotent; targets pids 6/8/2 when present)
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source

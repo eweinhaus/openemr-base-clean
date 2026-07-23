@@ -2,7 +2,14 @@
 
 ## Current focus
 
-**Success-criteria remediation (2026-07-22):** Closed audit gaps from
+**Local demo QA + setup (2026-07-23):** Panther §0–§8 smoke **43/43 pass**
+(`tmp/qa-smoke-last-run.txt`); sidecar pytest **165/165** with
+`COPILOT_INTERNAL_SECRET=test-secret`. Fixes: citation registry +
+`textContent` dialog body in `ask_copilot.js` (U1-5); uncertain-RxNorm
+assembly line in `claims.py` (U3-4/F-2); pytest secret reads env. Prior
+static audit + setup scripts unchanged.
+
+**Prior — Success-criteria remediation (2026-07-22):** Closed audit gaps from
 `docs/success-criteria-audit.md` — allergy contradiction at verify, meds route
 + `patient_context`, citation `retrieved_at`/`fhir_uuid`, `/ready`→503,
 `wrap_openai` + usage logs, Bruno collection, eval catalog+results (164 pytest),
@@ -10,16 +17,8 @@ cost analysis, k6 scaffold, ARCHITECTURE conflict wording aligned to deferred
 MVP. External still open: **demo video (A7)** and **social post (A10)**. Load
 baseline numbers (L2) need a real k6 run to fill.
 
-**Prior — Review hardening on DO (2026-07-22):** Commit `8b3f4d8` packaged + redeployed to
-https://142.93.255.212/. Overlay includes `InternalEndpointGuard`; sidecar rebuild
-with `defusedxml` + readiness TTL cache. Module active; OpenRouter **set**;
-LangSmith optional empty. Bind-seeded pid **6** dosing SSE → progress (chart →
-meds → label) → clinical + segments → citation → done; disclosure JSONL
-`tool_proxy` + **`verify`** (`pass:true`,`reason:ok`) same `correlation_id`.
-Sidecar `/ready` true (gateway + key; soft openrouter/langsmith).
-
-**Next:** Redeploy remediation to DO; optional Source click-path smoke; demo
-video / Early narrative; fill load-test baseline after k6 run.
+**Next:** Manual §12 walkthrough sign-off; redeploy remediation + setup scripts
+to DO; optional schedule picker first-load polish; demo video / Early narrative.
 
 ## PRD 07 decisions (locked — implemented)
 
@@ -172,7 +171,7 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **Historical transcript citation re-hydrate** — MVP OK to show plain prior turns.
 - **Compose image build locally** can hang on Docker Hub creds; host uvicorn/pytest historically.
 - **DO overlay:** PRD 07 on droplet (`517f95a`) — disclosure + Gateway + sidecar observability.
-- **DO schedule:** `CoPilot Demo%` re-seed after day roll.
+- **DO/local schedule:** re-seed with `scripts/copilot/setup-local-demo.sh --seed-only` after day roll (or DO packaged `seed_local_demo.sql`).
 - Per-turn tool tickets; durable disclosure DB (file stub OK through PRD 07); gateway `/ready` preflight deferred; wired alerts remain markdown (ops = LangSmith + JSONL).
 - **Chart meds facts omit RxCUI digits when present** (only uncertain suffix when missing) — research queries by scrubbed name; acceptable for MVP.
 - No rate limiting on `stream.php`.
@@ -182,14 +181,17 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 - **Manual PRD 05 UI smoke** — optional pid 2/amoxicillin.
 - **Allergy contradiction** at verify (meds research vs allergy list) — shipped; conditions via meds+`patient_context`.
 - **Success-criteria remediation** not yet redeployed to DO (code local).
+- **Local demo manual smoke (§12)** — not run after setup-script landing; static audit only.
 - **L2 load baseline numbers** — k6 script present; fill after run.
 - **A7 demo video / A10 social** — external placeholders in README.
 
 ## Remaining / next
 
-1. Optional Ask Co-Pilot Source popup click-path smoke on DO
-2. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
-3. Optional enable LangSmith keys on DO for redacted-trace screenshot (join story already works via disclosure JSONL)
+1. Manual local demo script (`docs/local-demo-success-criteria.md` §12) + §9 pytest/PHPUnit
+2. Redeploy remediation + `scripts/copilot/` seeds to DO
+3. Optional Ask Co-Pilot Source popup click-path smoke on DO
+4. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
+5. Optional enable LangSmith keys on DO for redacted-trace screenshot
 
 ## Out of scope right now
 

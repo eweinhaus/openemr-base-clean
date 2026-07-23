@@ -45,6 +45,8 @@
     var citeOpen = false;
     /** @type {HTMLElement|null} */
     var citeReturnFocusEl = null;
+    /** citation_id → citation payload for the current chat surface (PRD 06). */
+    var activeCitations = {};
 
     // Allowlisted research label hosts for the Open label href (H7).
     var ALLOWED_CITE_HOSTS = {
@@ -254,12 +256,144 @@
             return map;
         }
         for (var i = 0; i < list.length; i++) {
-            var c = list[i];
+            var c = normalizeCitation(list[i]);
             if (c && c.citation_id != null && String(c.citation_id) !== '') {
                 map[String(c.citation_id)] = c;
             }
         }
         return map;
+    }
+
+    /**
+     * Merge a citation batch into the in-memory lookup used by Source clicks.
+     *
+     * @param {Array<object>|null|undefined} list
+     */
+    function registerCitations(list) {
+        var map = citationMapFromList(list);
+        var keys = Object.keys(map);
+        for (var i = 0; i < keys.length; i++) {
+            activeCitations[keys[i]] = map[keys[i]];
+        }
+    }
+
+    /**
+     * Normalize SSE / test citation objects for the in-pane dialog.
+     *
+     * @param {object|null|undefined} raw
+     * @returns {object|null}
+     */
+    function normalizeCitation(raw) {
+        if (raw == null || typeof raw !== 'object') {
+            return null;
+        }
+        var locator = raw.locator;
+        if (locator == null || typeof locator !== 'object') {
+            locator = {
+                table: raw.table != null ? String(raw.table) : '',
+                id: raw.id != null ? String(raw.id) : '',
+                url: raw.url != null ? String(raw.url) : ''
+            };
+        } else {
+            locator = {
+                table: locator.table == null ? '' : String(locator.table),
+                id: locator.id == null ? '' : String(locator.id),
+                url: locator.url == null ? '' : String(locator.url),
+                fhir_uuid:
+                    locator.fhir_uuid == null ? '' : String(locator.fhir_uuid)
+            };
+        }
+        return {
+            citation_id: raw.citation_id,
+            source_type: raw.source_type,
+            title: raw.title,
+            excerpt: raw.excerpt,
+            retrieved_at: raw.retrieved_at,
+            locator: locator
+        };
+    }
+
+    /**
+     * Plain-text fallback for the citation dialog (WebDriver getText-safe).
+     *
+     * @param {object} citation
+     * @returns {string}
+     */
+    function formatCitationPlainText(citation) {
+        var lines = [];
+        if (citation.source_type) {
+            lines.push('source_type: ' + String(citation.source_type));
+        }
+        if (citation.title) {
+            lines.push('title: ' + String(citation.title));
+        }
+        if (citation.retrieved_at) {
+            lines.push('retrieved_at: ' + String(citation.retrieved_at));
+        }
+        if (citation.excerpt) {
+            lines.push('excerpt: ' + String(citation.excerpt));
+        }
+        var locator = citation.locator || {};
+        if (locator.table) {
+            lines.push('table: ' + String(locator.table));
+        }
+        if (locator.id) {
+            lines.push('id: ' + String(locator.id));
+        }
+        if (locator.fhir_uuid) {
+            lines.push('fhir_uuid: ' + String(locator.fhir_uuid));
+        }
+        return lines.join('\n');
+    }
+
+    function lookupCitation(citeId) {
+        if (citeId == null || String(citeId) === '') {
+            return null;
+        }
+        var key = String(citeId);
+        if (Object.prototype.hasOwnProperty.call(activeCitations, key)) {
+            return activeCitations[key];
+        }
+        return null;
+    }
+
+    /**
+     * Attach a Source control for one verified claim segment.
+     *
+     * @param {HTMLElement} line
+     * @param {string} citeId
+     * @param {object} citation
+     */
+    function attachSourceControl(line, citeId, citation) {
+        registerCitations([citation]);
+        var srcBtn = document.createElement('button');
+        srcBtn.type = 'button';
+        srcBtn.className = 'btn btn-link btn-sm ask-copilot-source';
+        srcBtn.setAttribute('data-cite-id', citeId);
+        try {
+            srcBtn.setAttribute('data-citation-json', JSON.stringify(citation));
+        } catch (jsonErr) {
+            // ignore — lookupCitation still works when registry is warm
+        }
+        srcBtn.textContent = strings.sourceLabel || 'Source';
+        srcBtn.addEventListener('click', function (evt) {
+            evt.preventDefault();
+            var payload = lookupCitation(citeId);
+            if (!payload) {
+                var raw = srcBtn.getAttribute('data-citation-json');
+                if (raw) {
+                    try {
+                        payload = normalizeCitation(JSON.parse(raw));
+                    } catch (parseErr) {
+                        payload = null;
+                    }
+                }
+            }
+            if (payload) {
+                openCitation(payload, srcBtn);
+            }
+        });
+        line.appendChild(srcBtn);
     }
 
     /**
@@ -293,17 +427,7 @@
                     ? String(seg.citation_id)
                     : '';
             if (seg.kind === 'claim' && citeId && map[citeId]) {
-                var srcBtn = document.createElement('button');
-                srcBtn.type = 'button';
-                srcBtn.className = 'btn btn-link btn-sm ask-copilot-source';
-                srcBtn.setAttribute('data-cite-id', citeId);
-                srcBtn.textContent = strings.sourceLabel || 'Source';
-                (function (citation, btn) {
-                    btn.addEventListener('click', function () {
-                        openCitation(citation, btn);
-                    });
-                })(map[citeId], srcBtn);
-                line.appendChild(srcBtn);
+                attachSourceControl(line, citeId, map[citeId]);
             }
 
             bubble.appendChild(line);
@@ -321,7 +445,9 @@
      * @param {HTMLElement|null} [returnFocusEl]
      */
     function openCitation(citation, returnFocusEl) {
-        if (!citeEl || !citeBackdropEl || !citeBodyEl || !citation) {
+        var normalized = normalizeCitation(citation);
+        var bodyEl = document.getElementById('acp-cite-body');
+        if (!citeEl || !citeBackdropEl || !bodyEl || !normalized) {
             return;
         }
         if (pickerMode === 'gate') {
@@ -332,54 +458,16 @@
         }
 
         citeReturnFocusEl = returnFocusEl || null;
-        citeBodyEl.textContent = '';
 
-        appendCiteRow(
-            citeBodyEl,
-            'source_type',
-            citation.source_type == null ? '' : String(citation.source_type)
-        );
-        appendCiteRow(
-            citeBodyEl,
-            'title',
-            citation.title == null ? '' : String(citation.title)
-        );
-
-        if (citation.retrieved_at != null && String(citation.retrieved_at)) {
-            appendCiteRow(
-                citeBodyEl,
-                'retrieved_at',
-                String(citation.retrieved_at)
-            );
+        var locator = normalized.locator || {};
+        var plainBody = formatCitationPlainText(normalized);
+        if (!plainBody.trim()) {
+            plainBody =
+                normalized.citation_id != null
+                    ? 'citation_id: ' + String(normalized.citation_id)
+                    : 'Source details unavailable.';
         }
-
-        var excerpt =
-            citation.excerpt == null ? '' : String(citation.excerpt);
-        var locator = citation.locator || {};
-        var table = locator.table == null ? '' : String(locator.table);
-        var locId = locator.id == null ? '' : String(locator.id);
-        if (excerpt) {
-            appendCiteRow(citeBodyEl, 'excerpt', excerpt);
-        } else if (table || locId) {
-            var prefix =
-                citation.source_type === 'research'
-                    ? strings.researchLocator || 'Research locator:'
-                    : strings.chartLocator || 'Chart locator:';
-            appendCiteRow(
-                citeBodyEl,
-                'locator',
-                prefix + ' ' + table + (locId ? ' #' + locId : '')
-            );
-        }
-        if (table) {
-            appendCiteRow(citeBodyEl, 'table', table);
-        }
-        if (locId) {
-            appendCiteRow(citeBodyEl, 'id', locId);
-        }
-        if (locator.fhir_uuid != null && String(locator.fhir_uuid)) {
-            appendCiteRow(citeBodyEl, 'fhir_uuid', String(locator.fhir_uuid));
-        }
+        bodyEl.textContent = plainBody;
 
         var url = locator.url == null ? '' : String(locator.url);
         if (citeOpenEl) {
@@ -409,8 +497,9 @@
         citeOpen = false;
         citeBackdropEl.classList.add('d-none');
         citeEl.classList.add('d-none');
-        if (citeBodyEl) {
-            citeBodyEl.textContent = '';
+        var bodyEl = document.getElementById('acp-cite-body');
+        if (bodyEl) {
+            bodyEl.textContent = '';
         }
         if (citeOpenEl) {
             citeOpenEl.setAttribute('href', '#');
@@ -1129,11 +1218,35 @@
                 Array.isArray(segments) &&
                 segments.length > 0
             ) {
+                if (map) {
+                    registerCitations(pendingCitations);
+                }
                 renderAssistantTurn(segments, map);
-            } else {
+            } else if (text) {
                 appendBubble('assistant', text);
+            } else if (Array.isArray(segments) && segments.length > 0) {
+                renderAssistantTurn(segments, map || {});
+            } else {
+                appendBubble(
+                    'assistant',
+                    strings.streamFail || 'Something went wrong. Try again.'
+                );
             }
-            pushTranscript('assistant', text);
+            var transcriptText = text;
+            if (
+                (!transcriptText || String(transcriptText).trim() === '') &&
+                Array.isArray(segments) &&
+                segments.length > 0
+            ) {
+                var joined = [];
+                for (var si = 0; si < segments.length; si++) {
+                    if (segments[si] && segments[si].text) {
+                        joined.push(String(segments[si].text));
+                    }
+                }
+                transcriptText = joined.join('\n');
+            }
+            pushTranscript('assistant', transcriptText);
             pendingClinical = null;
             pendingCitations = null;
         }
@@ -1188,6 +1301,7 @@
                         data && Array.isArray(data.citations)
                             ? data.citations
                             : [];
+                    registerCitations(pendingCitations);
                     tryRenderBuffered();
                 },
                 onDone: function () {
@@ -1263,6 +1377,23 @@
     }
 
     function bindUi() {
+        if (messagesEl) {
+            messagesEl.addEventListener('click', function (evt) {
+                var target = evt.target;
+                if (!target || typeof target.closest !== 'function') {
+                    return;
+                }
+                var srcBtn = target.closest('.ask-copilot-source');
+                if (!srcBtn || !messagesEl.contains(srcBtn)) {
+                    return;
+                }
+                var citeId = srcBtn.getAttribute('data-cite-id');
+                var citation = lookupCitation(citeId);
+                if (citation) {
+                    openCitation(citation, srcBtn);
+                }
+            });
+        }
         if (sendBtn) {
             sendBtn.addEventListener('click', function () {
                 sendMessage();
@@ -1338,8 +1469,31 @@
         selectPatient: selectPatient,
         pushTranscript: pushTranscript,
         isAllowlistedHttpsUrl: isAllowlistedHttpsUrl,
+        normalizeCitation: normalizeCitation,
+        registerCitations: registerCitations,
+        lookupCitation: lookupCitation,
         renderAssistantTurn: renderAssistantTurn,
         openCitation: openCitation,
+        openSourceByElement: function (btn) {
+            if (!btn) {
+                return;
+            }
+            var citeId = btn.getAttribute('data-cite-id');
+            var payload = lookupCitation(citeId);
+            if (!payload) {
+                var raw = btn.getAttribute('data-citation-json');
+                if (raw) {
+                    try {
+                        payload = normalizeCitation(JSON.parse(raw));
+                    } catch (parseErr) {
+                        payload = null;
+                    }
+                }
+            }
+            if (payload) {
+                openCitation(payload, btn);
+            }
+        },
         closeCitation: closeCitation,
         getState: function () {
             return {

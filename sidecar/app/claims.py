@@ -11,8 +11,11 @@ from .research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
     RESEARCH_TABLES,
     RESEARCH_TOOL_NAME,
+    UNCERTAIN_RXNORM_SUFFIX,
     format_not_on_list,
 )
+from .research.dosing import is_dosing_like
+from .research.resolve import ResolveStatus, resolve_drug_query
 from .research.extract import derive_research_title_and_url
 
 EMPTY_CLINICAL_MESSAGE = (
@@ -340,6 +343,7 @@ def build_clinical_payload(
     tool_results: list[dict[str, Any]] | None = None,
     tool_domain_errors: dict[str, str] | None = None,
     requested_tools: list[str] | None = None,
+    message: str = "",
 ) -> dict[str, Any]:
     """Build flat clinical ``text`` plus ordered ``segments`` (PRD 06).
 
@@ -353,6 +357,7 @@ def build_clinical_payload(
         tool_results=results,
         tool_domain_errors=tool_domain_errors or {},
         requested_tools=requested_tools or [],
+        message=message,
     )
 
     segments: list[dict[str, Any]] = []
@@ -450,6 +455,7 @@ def _assembly_lines(
     tool_results: list[dict[str, Any]],
     tool_domain_errors: dict[str, str],
     requested_tools: list[str],
+    message: str = "",
 ) -> list[str]:
     """Physician-facing assembly copy (never cited)."""
     domain_lines = build_domain_status_lines(
@@ -458,9 +464,11 @@ def _assembly_lines(
         requested_tools=requested_tools,
     )
     not_on_list_lines = _not_on_list_lines(tool_results)
+    uncertain_lines = _uncertain_rxnorm_lines(message, tool_results)
     refusal_texts = [refusal.text for refusal in refusals if refusal.text]
 
     parts: list[str] = []
+    parts.extend(uncertain_lines)
     parts.extend(not_on_list_lines)
     if _should_include_disclaimer(tool_results, refusals):
         parts.append(DECISION_SUPPORT_DISCLAIMER)
@@ -548,6 +556,40 @@ def _not_on_list_lines(tool_results: list[dict[str, Any]]) -> list[str]:
         seen_drugs.add(drug)
         lines.append(format_not_on_list(drug))
     return lines
+
+
+def _meds_facts_from_tool_results(
+    tool_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Extract prescriptions facts from a meds tool payload."""
+    for result in tool_results:
+        if not isinstance(result, dict) or result.get("tool") != "meds":
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return []
+        facts = data.get("facts")
+        if not isinstance(facts, list):
+            return []
+        return [fact for fact in facts if isinstance(fact, dict)]
+    return []
+
+
+def _uncertain_rxnorm_lines(message: str, tool_results: list[dict[str, Any]]) -> list[str]:
+    """Deterministic copy when chart Rx identity is uncertain (no research HTTP)."""
+    if not message or not is_dosing_like(message):
+        return []
+    resolved = resolve_drug_query(message, _meds_facts_from_tool_results(tool_results))
+    if (
+        resolved is None
+        or resolved.status is not ResolveStatus.BLOCKED
+        or resolved.query is None
+    ):
+        return []
+    drug = resolved.query.display_name or resolved.query.term
+    if not drug.strip():
+        return []
+    return [f"{drug.strip()}{UNCERTAIN_RXNORM_SUFFIX}"]
 
 
 def _should_include_disclaimer(

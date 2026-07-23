@@ -127,7 +127,8 @@ LANGSMITH_HIDE_INPUTS=true
 LANGSMITH_HIDE_OUTPUTS=true
 EOF
 
-cp "$SKILL_SCRIPTS/enable-module.sql" "$STAGE/enable_ask_copilot.sql"
+cp "$ROOT/scripts/copilot/enable-module.sql" "$STAGE/enable_ask_copilot.sql"
+cp "$ROOT/scripts/copilot/seed-local-demo.sql" "$STAGE/seed_local_demo.sql"
 
 # Drop AppleDouble if any slipped in
 find "$STAGE" -name '._*' -delete

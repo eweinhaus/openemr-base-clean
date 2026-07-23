@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import httpx
@@ -18,7 +19,7 @@ from sidecar.app.gateway_client import (
     GatewayTimeoutError,
 )
 
-TEST_SECRET = "test-secret-for-pytest"
+TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 TOOL_URL = "http://openemr/interface/ask_copilot/tool_proxy.php"
 
 FACTS_PAYLOAD: dict[str, Any] = {

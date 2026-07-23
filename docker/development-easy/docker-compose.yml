@@ -201,7 +201,8 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  # Clinical Co-Pilot LangGraph sidecar (PRD 03). Compose-internal only — no host ports.
+  # Clinical Co-Pilot LangGraph sidecar (PRD 03).
+  # Loopback-only host port for QA health/ready probes (P-3); browser still uses stream.php only.
   # Single uvicorn worker; one-physician demo concurrency. Soft /ready (no crash-loop on OpenRouter blips).
   copilot-sidecar:
     restart: always
@@ -224,7 +225,8 @@ services:
       LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-openemr-copilot-demo}"
       LANGSMITH_HIDE_INPUTS: "true"
       LANGSMITH_HIDE_OUTPUTS: "true"
-    # Intentionally no ports: mapping — browser must never reach the sidecar.
+    ports:
+    - "127.0.0.1:${WT_COPILOT_SIDECAR_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       start_period: 10s

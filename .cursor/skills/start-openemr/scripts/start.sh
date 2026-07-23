@@ -102,7 +102,8 @@ start_stack() {
 # the sidecar is reachable (no "connection refused") but turns still error at
 # the route/draft call. Never fails the script.
 sidecar_ready_note() {
-  local ready
+  local ready health_port
+  health_port="${WT_COPILOT_SIDECAR_PORT:-8080}"
   ready="$(
     docker compose -f "$COMPOSE_FILE" exec -T "$OPENEMR_SERVICE" \
       curl -s --max-time 5 http://copilot-sidecar:8080/ready 2>/dev/null || true
@@ -115,6 +116,8 @@ sidecar_ready_note() {
     echo "               $COMPOSE_DIR/.env and re-run, e.g.:"
     echo "                 echo 'OPENROUTER_API_KEY=sk-or-...' >> $COMPOSE_DIR/.env"
   fi
+  echo "  Sidecar QA:  curl -s http://127.0.0.1:${health_port}/health"
+  echo "               curl -s http://127.0.0.1:${health_port}/ready"
 }
 
 print_access() {
@@ -143,6 +146,11 @@ main() {
   fi
   if ! sidecar_healthy; then
     die "copilot-sidecar is not healthy — check: docker compose -f $COMPOSE_FILE logs $SIDECAR_SERVICE"
+  fi
+
+  if [[ "${COPILOT_SKIP_SETUP:-0}" != "1" ]]; then
+    echo "Running Co-Pilot local setup (module enable + demo seeds)..."
+    "$REPO_ROOT/scripts/copilot/setup-local-demo.sh"
   fi
 
   print_access

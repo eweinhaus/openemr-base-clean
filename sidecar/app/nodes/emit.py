@@ -27,6 +27,7 @@ def emit_node(state: GraphState) -> dict[str, object]:
         tool_results=tool_results,
         tool_domain_errors=tool_domain_errors,
         requested_tools=requested,
+        message=state.get("message", "") or "",
     )
     citations = build_citation_records(verified, tool_results=tool_results)
 

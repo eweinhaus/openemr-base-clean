@@ -13,6 +13,7 @@ from sidecar.app.claims import (
 from sidecar.app.research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
     RESEARCH_TOOL_NAME,
+    UNCERTAIN_RXNORM_SUFFIX,
     format_not_on_list,
 )
 
@@ -110,6 +111,43 @@ def test_assembly_segments_never_have_citation_id() -> None:
     assert not_on_list in assembly_texts
     assert DECISION_SUPPORT_DISCLAIMER in assembly_texts
     assert DOSING_REFUSAL_TEXT in assembly_texts
+
+
+def test_uncertain_rxnorm_assembly_line_for_blocked_dosing() -> None:
+    """pid 2 story: uncertain chart Rx → assembly copy before dosing refusal."""
+    tool_results = [
+        {
+            "ok": True,
+            "tool": "meds",
+            "data": {
+                "facts": [
+                    {
+                        "text": f"Lisinopril 10 mg — daily{UNCERTAIN_RXNORM_SUFFIX}",
+                        "table": "prescriptions",
+                        "id": "901",
+                    }
+                ],
+                "meta": {"active_med_count": 1, "allergy_count": 0},
+            },
+        }
+    ]
+    refusals = [Refusal(code="no_research", text=DOSING_REFUSAL_TEXT)]
+
+    payload = build_clinical_payload(
+        [],
+        refusals,
+        tool_results=tool_results,
+        requested_tools=["meds", "patient_context"],
+        message="What is a typical adult dose for lisinopril?",
+    )
+
+    assembly_texts = [
+        s["text"] for s in payload["segments"] if s["kind"] == "assembly"
+    ]
+    uncertain_line = f"Lisinopril{UNCERTAIN_RXNORM_SUFFIX}"
+    assert uncertain_line in assembly_texts
+    assert DOSING_REFUSAL_TEXT in assembly_texts
+    assert uncertain_line in payload["text"]
 
 
 def test_zero_verified_empty_clinical_is_assembly_only() -> None:

@@ -7,7 +7,7 @@
  * records a disclosure stub line, and proxies hybrid SSE from the internal sidecar.
  *
  * POST body: csrf_token_form, message, optional transcript (JSON), optional bound_pid
- * Response: text/event-stream (progress → clinical → done / error)
+ * Response: text/event-stream (progress* → clinical → citation → done / error)
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org

@@ -1,6 +1,6 @@
 -- Register + enable Ask Co-Pilot custom module (idempotent).
--- Canonical copy: scripts/copilot/enable-module.sql (keep in sync).
--- Run: scripts/copilot/setup-local-demo.sh
+-- Canonical copy for local dev + DO deploy packaging.
+-- Run via: scripts/copilot/setup-local-demo.sh
 
 INSERT INTO modules (
   mod_name, mod_directory, mod_parent, mod_type, mod_active, mod_ui_name,

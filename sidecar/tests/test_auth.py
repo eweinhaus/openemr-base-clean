@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,7 +11,7 @@ from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
 from sidecar.app.main import app
 from sidecar.app.state import UNBOUND_MESSAGE
 
-TEST_SECRET = "test-secret-for-pytest"
+TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 
 
 def _chat_payload(**overrides: object) -> dict[str, object]:
