@@ -47,6 +47,19 @@
   U3-4/F-2 uncertain RxNorm assembly, U3-6 off-chart line, T-1 pytest secret
   alignment — Panther 43 pass / pytest 165 pass.
 - [x] **Local demo automated gate (2026-07-23):** §9 pytest 165 + Panther 43/0 + Jest 11.
+- [x] **PRD 08 brief narrative synthesis (2026-07-23):** synthesize node + guard;
+  `kind:summary` segment; brief draft addendum; Ask Co-Pilot summary styling;
+  sidecar pytest extended; Jest summary segment test.
+- [x] **PRD 08 synthesis guard fix (2026-07-23):** rich pid-6 briefs were
+  silently list-only — closed vocabulary allowlist + date-reformat numeric trap
+  (`Jan 18, 2026` → `18-01-2026` rejected `01`). Redesigned guard: hard-fail on
+  novel numerics + length only; date-component grounding; vocabulary logged not
+  dropped; diagnostics in log message body. Live pid-6 brief emits `summary`
+  segment; sidecar pytest 52 on guard/synthesis paths.
+- [x] **PRD 09 brief prefetch cache (2026-07-23):** `SchedulePrefetchSelector`,
+  `prefetch.php` + `PrefetchBriefService`, sidecar `brief_cache` + `prefetch` queue +
+  `/v1/prefetch-brief`, cache-serve in `stream.py`, JS `triggerPrefetch`;
+  PHPUnit isolated 10; sidecar pytest **222**; Jest picker **25**.
 - [x] **DO redeploy UX pass (2026-07-23):** overlay tarball (uncommitted local) —
   citation numbers, typing bubble, friendly dates, patient names, picker UX,
   `patient.php`, `ClinicalDisplayDate`/`PatientDisplayName`; extended package
@@ -54,6 +67,11 @@
   today appts seeded (Lisinopril INSERT still fails DO schema — pre-existing).
 - [x] **DO redeploy QA fixes (2026-07-23):** commit `d08ea03` — sidecar rebuild,
   mounts OK, `/ready` 200, OpenRouter set, module enabled.
+- [x] **PRD 10 conversational synthesis all routes (2026-07-23):** all-route
+  synthesize gate; `turn_summary` rename; labs/meds prompts + draft addenda;
+  collapsed sources UI + CSS; `Summarizing…` progress; sidecar pytest **227**;
+  Jest citations **19**; ai-decision-guide §6 updated.
+- [ ] Manual PRD 10 smoke M1–M5 local (pid 6 brief/labs/meds + dosing disclaimer)
 - [ ] Public DO browser smoke (`docs/local-demo-success-criteria.md` §12 on 142.93.255.212)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
@@ -77,7 +95,8 @@
 - Planning docs may still be local untracked until committed
 - Docker Hub pull / `docker-credential-desktop` can hang locally — prefer build sidecar **on the droplet**
 - **Synthea `form_clinical_notes` empty** — notes domain honest empty; optional seed deferred
-- **Uncached four-tool brief** may be slow; TTL cache deferred; watch `draft_parse_failed` under richer tool JSON
+- **Uncached four-tool brief** may be slow on cache miss; PRD 09 prefetch warms top-3 schedule pids; watch `draft_parse_failed` under richer tool JSON
+- **PRD 08 guard fix local only** — DO still on pre-fix sidecar until next redeploy; if brief is list-only on DO, rebuild sidecar with `synthesize.py` guard changes
 - **DO `OPENFDA_API_KEY` empty** — optional; unauthenticated openFDA worked for smoke
 - **PRD 06 on DO** — SSE citation path verified; Ask Co-Pilot Source click-path optional
 - **PRD 07 on DO** — soft langsmith field; verify disclosure join smoked; LangSmith API key not required for chat

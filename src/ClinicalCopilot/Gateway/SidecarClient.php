@@ -18,7 +18,9 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use JsonException;
 use RuntimeException;
+use Throwable;
 
 final class SidecarClient
 {
@@ -95,5 +97,61 @@ final class SidecarClient
             }
             flush();
         }
+    }
+
+    /**
+     * POST /v1/prefetch-brief (non-SSE JSON kick for background brief cache warm).
+     *
+     * @param array{
+     *     correlation_id: string,
+     *     user_id: int,
+     *     username: string,
+     *     pid: int,
+     *     prefetch: bool
+     * } $payload
+     *
+     * @return array<string, mixed>
+     */
+    public function postPrefetch(array $payload): array
+    {
+        $base = rtrim($this->sidecarBaseUrl, '/');
+
+        try {
+            $response = $this->client->request('POST', $base . '/v1/prefetch-brief', [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Copilot-Internal-Secret' => $this->internalSecret,
+                    'X-Correlation-Id' => $payload['correlation_id'],
+                ],
+                'json' => $payload,
+                'timeout' => 5.0,
+                'connect_timeout' => 5.0,
+                'http_errors' => false,
+            ]);
+        } catch (Throwable) {
+            return ['ok' => false];
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            return ['ok' => false];
+        }
+
+        $body = (string) $response->getBody();
+        if ($body === '') {
+            return ['ok' => false];
+        }
+
+        try {
+            $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return ['ok' => false];
+        }
+
+        if (!is_array($decoded)) {
+            return ['ok' => false];
+        }
+
+        return $decoded;
     }
 }

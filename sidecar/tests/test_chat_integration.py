@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sidecar.app.auth import CORRELATION_HEADER, SECRET_HEADER
+from sidecar.app.brief_cache import clear_brief_cache, get_brief_cache
 from sidecar.app.claims import EMPTY_CLINICAL_MESSAGE
 from sidecar.app.errors import (
     ERROR_DRAFT_PARSE,
@@ -21,8 +22,10 @@ from sidecar.app.errors import (
     ERROR_UNEXPECTED,
     message_for_code,
 )
-from sidecar.app.llm import LlmError
+from sidecar.app.llm import AUTO_BRIEF_MESSAGE, LlmError
 from sidecar.app.main import app
+from sidecar.app.nodes.synthesize import SUMMARY_LABEL
+from sidecar.app.research.constants import DECISION_SUPPORT_DISCLAIMER
 from sidecar.app.state import (
     DOSING_REFUSAL,
     UNBOUND_MESSAGE,
@@ -30,6 +33,37 @@ from sidecar.app.state import (
 
 TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 DOSING_REFUSAL_TEXT = DOSING_REFUSAL.text
+
+# PRD 10 route-specific summary labels (brief keeps SUMMARY_LABEL from synthesize).
+LABS_SUMMARY_LABEL = "Lab summary — verify sources below."
+MEDS_SUMMARY_LABEL = "Medication summary — verify sources below."
+
+_MOCK_LABS_SYNTHESIS = json.dumps(
+    {"summary": "Creatinine is within reference range on the recent CMP."}
+)
+_MOCK_MEDS_LIST_SYNTHESIS = json.dumps(
+    {"summary": "Patient is on metformin 500 mg twice daily with meals."}
+)
+_MOCK_MEDS_DOSING_SYNTHESIS = json.dumps(
+    {
+        "summary": (
+            "Metformin is typically started at 500 mg twice daily with meals "
+            "per the retrieved label."
+        )
+    }
+)
+
+
+def _patch_synthesize_turn_raw(
+    monkeypatch: pytest.MonkeyPatch,
+    fn: object,
+) -> None:
+    """Patch PRD 10 rename target before production lands (raising=False)."""
+    monkeypatch.setattr(
+        "sidecar.app.nodes.synthesize.synthesize_turn_raw",
+        fn,
+        raising=False,
+    )
 
 
 def _chat_payload(**overrides: object) -> dict[str, object]:
@@ -173,6 +207,51 @@ VALID_MEDS_DRAFT = json.dumps(
     }
 )
 
+VALID_BRIEF_DRAFT = json.dumps(
+    {
+        "claims": [
+            {
+                "text": "Last visit 2024-03-01 — follow-up for hypertension",
+                "source_type": "chart",
+                "locator": {"table": "form_encounter", "id": "701"},
+            },
+            {
+                "text": "Active problem: Essential hypertension",
+                "source_type": "chart",
+                "locator": {"table": "lists", "id": "801"},
+            },
+        ],
+        "refusals": [],
+    }
+)
+
+PATIENT_CONTEXT_RESULT: dict[str, Any] = {
+    "ok": True,
+    "tool": "patient_context",
+    "data": {
+        "facts": [
+            {
+                "text": "Last visit 2024-03-01 — follow-up for hypertension",
+                "table": "form_encounter",
+                "id": "701",
+                "excerpt": "Office visit — follow-up",
+            },
+            {
+                "text": "Active problem: Essential hypertension",
+                "table": "lists",
+                "id": "801",
+                "excerpt": "Problem list",
+            },
+        ]
+    },
+}
+
+
+def _gateway_brief_tool(_self: object, tool: str, *_rest: object) -> dict[str, Any]:
+    if tool == "patient_context":
+        return PATIENT_CONTEXT_RESULT
+    return {"ok": True, "tool": tool, "data": {"facts": []}}
+
 
 def test_happy_path_labs_progress_clinical_done(
     monkeypatch: pytest.MonkeyPatch,
@@ -185,6 +264,10 @@ def test_happy_path_labs_progress_clinical_done(
     monkeypatch.setattr(
         "sidecar.app.gateway_client.GatewayClient.call_tool",
         lambda *_a, **_k: LABS_RESULT,
+    )
+    _patch_synthesize_turn_raw(
+        monkeypatch,
+        lambda *_a, **_k: _MOCK_LABS_SYNTHESIS,
     )
 
     events = _stream_chat(monkeypatch)
@@ -200,6 +283,7 @@ def test_happy_path_labs_progress_clinical_done(
     progress = [data for name, data in events if name == "progress"]
     assert any("Pulling chart" in msg["message"] for msg in progress)
     assert any("Pulling labs" in msg["message"] for msg in progress)
+    assert any("Summarizing" in msg["message"] for msg in progress)
 
     clinical = next(data for name, data in events if name == "clinical")
     assert "Serum creatinine 1.1 mg/dL" in clinical["text"]
@@ -448,6 +532,207 @@ def test_brief_route_never_looks_up_label(
 
     fetch_mock.assert_not_called()
     assert not any("Looking up label information" in p for p in progress)
+
+
+def test_brief_route_emits_summary_and_claim_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "brief")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_BRIEF_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        _gateway_brief_tool,
+    )
+    _patch_synthesize_turn_raw(
+        monkeypatch,
+        lambda *_a, **_k: json.dumps(
+            {
+                "summary": (
+                    "Patient presents for follow-up for hypertension. "
+                    "Last visit was 2024-03-01."
+                )
+            }
+        ),
+    )
+
+    events = _stream_chat(monkeypatch, _chat_payload(message="Brief me."))
+    clinical = next(data for name, data in events if name == "clinical")
+    citation = next(data for name, data in events if name == "citation")
+
+    summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assert len(summary_segs) == 1
+    assert summary_segs[0]["text"].startswith(SUMMARY_LABEL)
+    assert "citation_id" not in summary_segs[0]
+    assert len(claim_segs) >= 2
+    assert clinical["text"].startswith(SUMMARY_LABEL)
+    assert len(citation["citations"]) == len(claim_segs)
+
+
+def test_labs_route_emits_summary_segment_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PRD 10: labs with verified claims → labeled summary segment first."""
+    synthesize_mock = MagicMock(return_value=_MOCK_LABS_SYNTHESIS)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_LABS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_RESULT,
+    )
+    _patch_synthesize_turn_raw(monkeypatch, synthesize_mock)
+
+    events = _stream_chat(monkeypatch)
+    clinical = next(data for name, data in events if name == "clinical")
+    progress = [data["message"] for name, data in events if name == "progress"]
+
+    synthesize_mock.assert_called_once()
+    summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assert len(summary_segs) == 1
+    assert clinical["segments"][0]["kind"] == "summary"
+    assert summary_segs[0]["text"].startswith(LABS_SUMMARY_LABEL)
+    assert "citation_id" not in summary_segs[0]
+    assert claim_segs
+    assert clinical["text"].startswith(LABS_SUMMARY_LABEL)
+    assert any("Summarizing" in p for p in progress)
+
+
+def test_meds_list_route_emits_summary_segment_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PRD 10: meds list turn with verified claims → medication summary first."""
+    synthesize_mock = MagicMock(return_value=_MOCK_MEDS_LIST_SYNTHESIS)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: VALID_MEDS_DRAFT,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: MEDS_RESULT,
+    )
+    _patch_synthesize_turn_raw(monkeypatch, synthesize_mock)
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What medications is the patient on?"),
+    )
+    clinical = next(data for name, data in events if name == "clinical")
+    progress = [data["message"] for name, data in events if name == "progress"]
+
+    synthesize_mock.assert_called_once()
+    summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assert len(summary_segs) == 1
+    assert clinical["segments"][0]["kind"] == "summary"
+    assert summary_segs[0]["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert "citation_id" not in summary_segs[0]
+    assert claim_segs
+    assert "Metformin 500 mg" in clinical["text"]
+    assert clinical["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert DOSING_REFUSAL_TEXT not in clinical["text"]
+    assert any("Summarizing" in p for p in progress)
+
+
+def test_meds_dosing_route_emits_summary_research_and_disclaimer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PRD 10: meds dosing + research hit → summary, claims, disclaimer assembly."""
+    from sidecar.app.research import LabelFetchResult
+
+    set_id = "abc-set-id-1"
+    fact_id = f"{set_id}:dosage_and_administration"
+    openfda_result = {
+        "openfda": {
+            "generic_name": ["METFORMIN"],
+            "brand_name": ["GLUCOPHAGE"],
+            "spl_set_id": [set_id],
+            "product_type": ["HUMAN PRESCRIPTION DRUG"],
+        },
+        "dosage_and_administration": [
+            "Usual adult dose is 500 mg twice daily with meals."
+        ],
+    }
+    research_draft = json.dumps(
+        {
+            "claims": [
+                {
+                    "text": "Metformin 500 mg tablet — take one twice daily with meals",
+                    "source_type": "chart",
+                    "locator": {"table": "prescriptions", "id": "201"},
+                },
+                {
+                    "text": "Usual adult dose is 500 mg twice daily with meals.",
+                    "source_type": "research",
+                    "locator": {"table": "openfda", "id": fact_id},
+                },
+            ],
+            "refusals": [],
+        }
+    )
+
+    def _fake_fetch(query: Any, *, correlation_id: str = "") -> LabelFetchResult:
+        return LabelFetchResult(
+            ok=True,
+            source="openfda",
+            set_id=set_id,
+            outcome="hit_openfda",
+            openfda_result=openfda_result,
+            generic_names=("METFORMIN",),
+            brand_names=("GLUCOPHAGE",),
+        )
+
+    synthesize_mock = MagicMock(return_value=_MOCK_MEDS_DOSING_SYNTHESIS)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "meds")
+    monkeypatch.setattr(
+        "sidecar.app.nodes.draft.draft_claims_raw",
+        lambda *_a, **_k: research_draft,
+    )
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: MEDS_RESULT,
+    )
+    monkeypatch.setattr("sidecar.app.nodes.tools.fetch_label", _fake_fetch)
+    _patch_synthesize_turn_raw(monkeypatch, synthesize_mock)
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What is the typical adult dose of metformin?"),
+    )
+    clinical = next(data for name, data in events if name == "clinical")
+    citation = next(data for name, data in events if name == "citation")
+    progress = [data["message"] for name, data in events if name == "progress"]
+
+    synthesize_mock.assert_called_once()
+    summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
+    claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
+    assembly_segs = [s for s in clinical["segments"] if s.get("kind") == "assembly"]
+    assert len(summary_segs) == 1
+    assert clinical["segments"][0]["kind"] == "summary"
+    assert summary_segs[0]["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert claim_segs
+    assert any("Usual adult dose is 500 mg twice daily" in s["text"] for s in claim_segs)
+    assert any(
+        DECISION_SUPPORT_DISCLAIMER in s["text"] for s in assembly_segs
+    )
+    assert DOSING_REFUSAL_TEXT not in clinical["text"]
+    assert any("Summarizing" in p for p in progress)
+    assert any("Looking up label information" in p for p in progress)
+
+    research_cites = [
+        c for c in citation["citations"] if c.get("source_type") == "research"
+    ]
+    assert len(research_cites) >= 1
+    research_ids = {c["citation_id"] for c in research_cites}
+    claim_ids = {s["citation_id"] for s in claim_segs}
+    assert research_ids <= claim_ids
 
 
 def test_oversized_message_yields_error_sse(
@@ -711,3 +996,194 @@ def test_disclosure_callback_failure_still_emits_clinical_path(
     assert names.index("clinical") < names.index("citation")
     assert names.index("citation") < names.index("done")
     assert not any(name == "error" for name, _ in events)
+
+
+CACHED_BRIEF_CLINICAL_TEXT = (
+    "Summary: Patient presents for follow-up for hypertension. "
+    "Last visit was 2024-03-01."
+)
+CACHED_BRIEF_SEGMENTS: list[dict[str, Any]] = [
+    {
+        "kind": "summary",
+        "text": "Summary: Patient presents for follow-up for hypertension.",
+    },
+    {
+        "kind": "claim",
+        "text": "Last visit 2024-03-01 — follow-up for hypertension",
+        "citation_id": "cache-cite-1",
+    },
+]
+CACHED_BRIEF_CITATIONS: list[dict[str, Any]] = [
+    {
+        "citation_id": "cache-cite-1",
+        "source_type": "chart",
+        "label": "Last visit",
+        "locator": {"table": "form_encounter", "id": "701"},
+    },
+]
+
+
+@pytest.fixture(autouse=True)
+def _reset_brief_cache() -> None:
+    clear_brief_cache()
+    yield
+    clear_brief_cache()
+
+
+def _seed_brief_cache(
+    *,
+    user_id: int = 1,
+    pid: int = 6,
+    correlation_id: str = "corr-prefetch-1",
+) -> None:
+    get_brief_cache().put(
+        user_id,
+        pid,
+        correlation_id=correlation_id,
+        clinical_text=CACHED_BRIEF_CLINICAL_TEXT,
+        clinical_segments=CACHED_BRIEF_SEGMENTS,
+        citations=CACHED_BRIEF_CITATIONS,
+    )
+
+
+def test_cache_hit_auto_brief_replays_sse_without_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Warm cache + auto-brief + empty transcript → clinical/citation/done, no LLM."""
+    _seed_brief_cache()
+
+    route_mock = MagicMock(return_value="brief")
+    draft_mock = MagicMock(return_value=VALID_BRIEF_DRAFT)
+    build_graph_mock = MagicMock()
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr("sidecar.app.stream.build_graph", build_graph_mock)
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message=AUTO_BRIEF_MESSAGE, transcript=[]),
+    )
+    names = [name for name, _ in events]
+
+    assert names == ["clinical", "citation", "done"]
+    assert "progress" not in names
+
+    clinical = next(data for name, data in events if name == "clinical")
+    citation = next(data for name, data in events if name == "citation")
+    done = next(data for name, data in events if name == "done")
+
+    assert clinical["text"] == CACHED_BRIEF_CLINICAL_TEXT
+    assert clinical["segments"] == CACHED_BRIEF_SEGMENTS
+    assert citation["citations"] == CACHED_BRIEF_CITATIONS
+    assert done["correlation_id"] == "corr-int-1"
+
+    route_mock.assert_not_called()
+    draft_mock.assert_not_called()
+    build_graph_mock.assert_not_called()
+
+
+def test_cache_miss_auto_brief_runs_full_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-brief with empty cache still runs the graph (mock LLM)."""
+    route_mock = MagicMock(return_value="brief")
+    draft_mock = MagicMock(return_value=VALID_BRIEF_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        _gateway_brief_tool,
+    )
+    _patch_synthesize_turn_raw(
+        monkeypatch,
+        lambda *_a, **_k: json.dumps(
+            {"summary": "Patient presents for follow-up for hypertension."}
+        ),
+    )
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message=AUTO_BRIEF_MESSAGE, transcript=[]),
+    )
+    names = [name for name, _ in events]
+
+    assert "progress" in names
+    assert "clinical" in names
+    assert "citation" in names
+    assert names[-1] == "done"
+    route_mock.assert_called()
+    draft_mock.assert_called()
+
+
+def test_cache_warm_labs_message_runs_full_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Follow-up labs question must not serve cached brief."""
+    _seed_brief_cache()
+
+    route_mock = MagicMock(return_value="labs")
+    draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_RESULT,
+    )
+    _patch_synthesize_turn_raw(
+        monkeypatch,
+        lambda *_a, **_k: _MOCK_LABS_SYNTHESIS,
+    )
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(message="What's creatinine?", transcript=[]),
+    )
+    names = [name for name, _ in events]
+
+    assert "progress" in names
+    assert names.index("clinical") < names.index("citation")
+    clinical = next(data for name, data in events if name == "clinical")
+    assert "Serum creatinine 1.1 mg/dL" in clinical["text"]
+    assert CACHED_BRIEF_CLINICAL_TEXT not in clinical["text"]
+    route_mock.assert_called()
+    draft_mock.assert_called()
+
+
+def test_cache_warm_auto_brief_with_transcript_runs_full_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-brief after a prior turn must not replay cache."""
+    _seed_brief_cache()
+
+    route_mock = MagicMock(return_value="brief")
+    draft_mock = MagicMock(return_value=VALID_BRIEF_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", route_mock)
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        _gateway_brief_tool,
+    )
+    _patch_synthesize_turn_raw(
+        monkeypatch,
+        lambda *_a, **_k: json.dumps(
+            {"summary": "Patient presents for follow-up for hypertension."}
+        ),
+    )
+
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(
+            message=AUTO_BRIEF_MESSAGE,
+            transcript=[
+                {"role": "user", "text": "What's creatinine?"},
+                {"role": "assistant", "text": "Serum creatinine 1.1 mg/dL."},
+            ],
+        ),
+    )
+    names = [name for name, _ in events]
+
+    assert "progress" in names
+    clinical = next(data for name, data in events if name == "clinical")
+    assert CACHED_BRIEF_CLINICAL_TEXT not in clinical["text"]
+    route_mock.assert_called()
+    draft_mock.assert_called()

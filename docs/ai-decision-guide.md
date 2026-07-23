@@ -125,11 +125,17 @@ Vertical slice means **real seams**, not “call the fewest tools.” When choos
 
 Persona: clinic PCP with **~30–90 seconds** between rooms. Voice: terse, clinical, non-technical. Trust > completeness; incompleteness must be **honest and scannable**.
 
-### Answer density (UC-1 brief)
+### Answer density (all routes — PRD 10)
 
-- Prefer **short structured bullets** over narrative paragraphs.
+- **Default answer shape (PRD 08 + PRD 10):** every eligible turn (`brief`, `labs`, `meds` with verified claims ≥ 1) opens with a **labeled narrative paragraph** first, then **verified claim lines with Source controls** below for audit. Route-specific labels:
+  - Brief: `Chart summary — verify sources below.`
+  - Labs: `Lab summary — verify sources below.`
+  - Meds: `Medication summary — verify sources below.`
+- The narrative is **unverified synthesis** — never Source-linked. Assembly lines (empty, unavailable, disclaimer, refusals, not-on-list) stay **always visible** outside the collapse.
+- **Collapsed audit UI (PRD 10):** verified claim rows + Source controls render **collapsed by default**; toggle `Show verified sources (N)` / `Hide sources` reveals them. Physician reads the paragraph first; one click for audit.
+- Brief covers the job (why here / last visit, conditions, allergies, meds pointers, high-signal labs, selective notes) — not a chart dump. Labs/meds summaries are shorter (~40–80 words) and question-focused.
 - Cover the job (why here / last visit, conditions, allergies, meds pointers, high-signal labs, selective notes) — not a chart dump.
-- Caps exist so the answer stays scannable under ~90s *reading* time; uncached *latency* may exceed that today — progress events carry the wait (see below). Cache later makes the same rich shape feel instant.
+- Caps exist so the answer stays scannable under ~90s *reading* time. **PRD 09 (2026-07-23):** schedule-scoped prefetch + sidecar TTL cache replays the full PRD 08 brief on auto-brief bind (`clinical` → `citation` → `done`, no LLM). Uncached first touch may still be slow — progress events carry the wait; cache hit target ≤2s SSE replay.
 
 ### Partial tool / domain failure
 
@@ -169,6 +175,7 @@ Use **clinical-ish** progress, not toolchain jargon. Physicians are not debuggin
 | --- | --- |
 | `Pulling labs…` | `Calling tool labs_stub` |
 | `Checking medications…` | `ROUTE=meds fan-in` |
+| `Summarizing…` | `synthesize node started` |
 | `Looking up label information…` | `openFDA HTTP 200` |
 | `Reviewing chart notes…` | `verify node started` |
 
@@ -398,7 +405,7 @@ Steps 8–9 in architecture (Synthea; eval + narrative) are supporting: Synthea 
 | Fake now? | Only non-spine work; Memory Bank debt required |
 | UC cut? | Keep UC-1; then UC-2; label-backed UC-3 if easy; else thin UC-3 |
 | Brief: one tool vs all chart tools? | **Rich parallel** (cache later); thin only for domain follow-ups |
-| Slow uncached brief? | Accept now; keep rich shape for post-cache ~90s goal |
+| Slow uncached brief? | Accept on miss; prefetch warms top-3 schedule pids — cache hit replays rich PRD 08 shape instantly |
 | One tool failed? | Partial verified answer + domain unavailable line |
 | Empty allergies/meds? | Explicit “none on file” — don’t omit the section |
 | Citations? | Link **every** verified claim; popup for details |

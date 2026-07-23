@@ -68,6 +68,6 @@ Branch: `main` → `origin/main`.
 - `docs/ai-decision-guide.md` — how agents choose under ambiguity (under ARCHITECTURE; local/untracked for now)
 - `docs/architecture-overview.md` — diagrams companion
 - `docs/architecture-tech-primer.md` — study guide (decisions now locked)
-- `docs/PRDs/01`–`07` — vertical-slice PRDs (`07-observability-langsmith.md` coded)
+- `docs/PRDs/01`–`08` — vertical-slice PRDs (`07-observability-langsmith.md` coded; `08-brief-narrative-synthesis.md` coded)
 - `docs/local-demo-success-criteria.md` — local QA sign-off checklist
 - `CLAUDE.md` / `CONTRIBUTING.md` — OpenEMR conventions

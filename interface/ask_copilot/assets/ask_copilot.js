@@ -695,8 +695,72 @@
     }
 
     /**
-     * Render an assistant turn: one block per segment; claim segments with a
-     * known citation_id get a trailing Source control (H1/H2/orphan rule).
+     * Build one segment row (summary, claim, or assembly).
+     *
+     * @param {{kind?: string, text?: string, citation_id?: string}} seg
+     * @param {Object<string, object>} map
+     * @returns {HTMLElement}
+     */
+    function renderSegmentLine(seg, map) {
+        var line = document.createElement('div');
+        line.className = 'ask-copilot-segment';
+        if (seg.kind === 'summary') {
+            line.className += ' ask-copilot-segment-summary';
+        }
+
+        var textSpan = document.createElement('span');
+        textSpan.className = 'ask-copilot-segment-text';
+        textSpan.textContent =
+            seg.text == null ? '' : humanizeIsoDatesInText(String(seg.text));
+        line.appendChild(textSpan);
+
+        var citeId =
+            seg.citation_id != null && String(seg.citation_id) !== ''
+                ? String(seg.citation_id)
+                : '';
+        if (seg.kind === 'claim' && citeId && map[citeId]) {
+            attachSourceControl(line, citeId, map[citeId]);
+        }
+
+        return line;
+    }
+
+    /** Empty-domain assembly lines shown inside the collapsed sources panel. */
+    var COLLAPSED_ASSEMBLY_TEXTS = {
+        'No allergies on file.': true,
+        'No recent notes on file.': true
+    };
+
+    /**
+     * @param {{kind?: string, text?: string}} seg
+     * @returns {boolean}
+     */
+    function isCollapsedAssemblySegment(seg) {
+        if (!seg || seg.kind !== 'assembly') {
+            return false;
+        }
+        var text = seg.text == null ? '' : String(seg.text);
+        return Object.prototype.hasOwnProperty.call(COLLAPSED_ASSEMBLY_TEXTS, text);
+    }
+
+    /**
+     * Localized label for the collapsed-sources toggle.
+     *
+     * @param {number} count
+     * @returns {string}
+     */
+    function formatShowVerifiedSources(count) {
+        var template = strings.showVerifiedSources;
+        if (template && String(template).indexOf('{count}') !== -1) {
+            return String(template).replace('{count}', String(count));
+        }
+        return 'Show verified sources (' + count + ')';
+    }
+
+    /**
+     * Render an assistant turn: summary visible; verified claims and select
+     * empty-domain assembly lines collapsed; other assembly/disclaimer visible
+     * after the collapse block.
      *
      * @param {Array<{kind?: string, text?: string, citation_id?: string}>} segments
      * @param {Object<string, object>} citationMap
@@ -709,27 +773,62 @@
         bubble.className = 'ask-copilot-bubble ask-copilot-bubble-assistant';
         var segs = Array.isArray(segments) ? segments : [];
         var map = citationMap || {};
+        var claims = [];
+        var panelAssemblies = [];
+        var assemblies = [];
 
         for (var i = 0; i < segs.length; i++) {
             var seg = segs[i] || {};
-            var line = document.createElement('div');
-            line.className = 'ask-copilot-segment';
+            if (seg.kind === 'summary') {
+                bubble.appendChild(renderSegmentLine(seg, map));
+            } else if (seg.kind === 'claim') {
+                claims.push(seg);
+            } else if (isCollapsedAssemblySegment(seg)) {
+                panelAssemblies.push(seg);
+            } else if (seg.kind === 'assembly') {
+                assemblies.push(seg);
+            } else {
+                bubble.appendChild(renderSegmentLine(seg, map));
+            }
+        }
 
-            var textSpan = document.createElement('span');
-            textSpan.className = 'ask-copilot-segment-text';
-            textSpan.textContent =
-                seg.text == null ? '' : humanizeIsoDatesInText(String(seg.text));
-            line.appendChild(textSpan);
+        if (claims.length > 0 || panelAssemblies.length > 0) {
+            var toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className =
+                'btn btn-link btn-sm ask-copilot-sources-toggle';
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.textContent = formatShowVerifiedSources(claims.length);
 
-            var citeId =
-                seg.citation_id != null && String(seg.citation_id) !== ''
-                    ? String(seg.citation_id)
-                    : '';
-            if (seg.kind === 'claim' && citeId && map[citeId]) {
-                attachSourceControl(line, citeId, map[citeId]);
+            var panel = document.createElement('div');
+            panel.className = 'ask-copilot-sources-panel';
+            panel.hidden = true;
+
+            for (var j = 0; j < claims.length; j++) {
+                panel.appendChild(renderSegmentLine(claims[j], map));
+            }
+            for (var p = 0; p < panelAssemblies.length; p++) {
+                panel.appendChild(renderSegmentLine(panelAssemblies[p], map));
             }
 
-            bubble.appendChild(line);
+            toggle.addEventListener('click', function () {
+                var opening = panel.hidden;
+                panel.hidden = !opening;
+                toggle.setAttribute(
+                    'aria-expanded',
+                    opening ? 'true' : 'false'
+                );
+                toggle.textContent = opening
+                    ? strings.hideSources || 'Hide sources'
+                    : formatShowVerifiedSources(claims.length);
+            });
+
+            bubble.appendChild(toggle);
+            bubble.appendChild(panel);
+        }
+
+        for (var k = 0; k < assemblies.length; k++) {
+            bubble.appendChild(renderSegmentLine(assemblies[k], map));
         }
 
         messagesEl.appendChild(bubble);
@@ -1188,9 +1287,36 @@
             var data = await response.json();
             cacheSchedulePatientNames(data);
             renderSchedule(data);
+            triggerPrefetch();
         } catch (err) {
             renderScheduleError();
         }
+    }
+
+    /**
+     * Kick background brief prefetch for today's schedule (fire-and-forget).
+     * Never blocks the picker; errors are swallowed.
+     */
+    function triggerPrefetch() {
+        if (!config.prefetchUrl || streaming) {
+            return;
+        }
+
+        if (typeof top !== 'undefined' && typeof top.restoreSession === 'function') {
+            top.restoreSession();
+        }
+
+        fetch(config.prefetchUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'csrf_token_form=' + encodeURIComponent(config.csrf || '')
+        }).catch(function () {
+            // Prefetch is best-effort; do not surface failures in the UI.
+        });
     }
 
     function delay(ms) {
@@ -1230,9 +1356,101 @@
     }
 
     /**
-     * Physician clicked a patient: navigate the canonical OpenEMR patient
-     * context (top frame set_pid), then fast-poll the session pid until the
-     * bind lands. Never binds silently — always reached via a click.
+     * Bind session pid via Ask Co-Pilot bind.php (no chart navigation).
+     *
+     * @param {number} pid
+     * @returns {Promise<object>}
+     */
+    async function bindPatientSession(pid) {
+        if (!config.bindUrl || !Number.isFinite(pid) || pid <= 0) {
+            throw new Error('Ask Co-Pilot bind URL unavailable.');
+        }
+
+        if (typeof top !== 'undefined' && typeof top.restoreSession === 'function') {
+            top.restoreSession();
+        }
+
+        var response = await fetch(config.bindUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+            },
+            body: new URLSearchParams({
+                csrf_token_form: config.csrf || '',
+                pid: String(pid)
+            }).toString()
+        });
+
+        if (!response.ok) {
+            throw new Error('Ask Co-Pilot bind returned HTTP ' + response.status + '.');
+        }
+
+        var data = await response.json();
+        if (!data || parseInt(data.pid, 10) !== pid) {
+            throw new Error('Ask Co-Pilot bind returned unexpected payload.');
+        }
+
+        return data;
+    }
+
+    /**
+     * Sync the OpenEMR shell patient context without leaving Ask Co-Pilot.
+     *
+     * @param {number} pid
+     * @param {string|null|undefined} displayName
+     * @param {object|null|undefined} bindResult
+     */
+    function syncShellPatientContext(pid, displayName, bindResult) {
+        if (typeof top === 'undefined') {
+            return;
+        }
+
+        var payload = bindResult && typeof bindResult === 'object' ? bindResult : {};
+        var name =
+            displayName != null && String(displayName).trim() !== ''
+                ? String(displayName).trim()
+                : payload.name != null
+                  ? String(payload.name)
+                  : '';
+        var pubpid =
+            payload.pubpid != null && String(payload.pubpid) !== ''
+                ? String(payload.pubpid)
+                : String(pid);
+        var dobStr =
+            payload.dob_display != null ? String(payload.dob_display) : '';
+
+        // left_nav.setPatient navigates to the Encounters tab for a new pid.
+        // Only sync labels when the shell already has this patient selected.
+        if (
+            top.left_nav &&
+            typeof top.left_nav.setPatient === 'function' &&
+            top.app_view_model &&
+            top.app_view_model.application_data
+        ) {
+            var currentPatient = top.app_view_model.application_data.patient();
+            if (
+                currentPatient !== null &&
+                typeof currentPatient.pid === 'function' &&
+                currentPatient.pid() === pid
+            ) {
+                try {
+                    top.left_nav.setPatient(name, pid, pubpid, '', dobStr);
+                } catch (err) {
+                    // Non-fatal — session bind is authoritative for Co-Pilot.
+                }
+            }
+        }
+
+        if (typeof top.activateTabByName === 'function') {
+            top.activateTabByName('acp', true);
+        }
+    }
+
+    /**
+     * Physician clicked a patient: bind session pid in place, then fast-poll
+     * until the bind lands. Never binds silently — always reached via a click.
      *
      * @param {number} pid
      * @param {string|null|undefined} [displayName]
@@ -1243,10 +1461,7 @@
             return;
         }
 
-        var rtopAvailable = typeof top !== 'undefined' && top.RTop;
-        if (!rtopAvailable) {
-            // Not under the main shell — degrade to the Finder tab; the
-            // patient watcher closes the gate once the session pid binds.
+        if (!config.bindUrl) {
             openFinder();
             setPickerStatus(
                 strings.useFinder || 'Select the patient from the search tab.'
@@ -1256,16 +1471,28 @@
 
         pickerBusy = true;
         setPickerActionsDisabled(true);
-        setPickerStatus(strings.openingChart || 'Opening chart...');
+        setPickerStatus(strings.openingChart || 'Selecting patient...');
 
-        if (typeof top.restoreSession === 'function') {
+        if (typeof top !== 'undefined' && typeof top.restoreSession === 'function') {
             top.restoreSession();
         }
-        var webroot = top.webroot_url || config.webroot || '';
-        top.RTop.location =
-            webroot +
-            '/interface/patient_file/summary/demographics.php?set_pid=' +
-            encodeURIComponent(String(pid));
+
+        var bindResult = null;
+        try {
+            bindResult = await bindPatientSession(pid);
+        } catch (bindErr) {
+            pickerBusy = false;
+            setPickerActionsDisabled(false);
+            if (pickerMode !== null) {
+                setPickerStatus(
+                    strings.bindTimeout ||
+                        'Could not confirm the patient selection. Try again.'
+                );
+            }
+            return;
+        }
+
+        syncShellPatientContext(pid, displayName, bindResult);
 
         var bound = await pollForPid(pid);
         if (bound) {
@@ -1275,13 +1502,22 @@
             }
             boundPid = pid;
             boundPatientName =
-                displayName != null && String(displayName).trim() !== ''
-                    ? String(displayName).trim()
-                    : schedulePatientNames[pid] || null;
+                bindResult && bindResult.name != null && String(bindResult.name).trim() !== ''
+                    ? String(bindResult.name).trim()
+                    : displayName != null && String(displayName).trim() !== ''
+                      ? String(displayName).trim()
+                      : schedulePatientNames[pid] || null;
             pickerBusy = false;
             closePicker();
             showGate(false, pid);
             await updatePatientLine(pid, boundPatientName);
+            if (typeof top !== 'undefined' && typeof top.activateTabByName === 'function') {
+                top.activateTabByName('acp', true);
+            }
+            var autoBrief =
+                strings.autoBriefMessage || 'Brief me on this patient.';
+            await sendMessage(autoBrief);
+            triggerPrefetch();
             return;
         }
 
@@ -1514,9 +1750,11 @@
     /**
      * Send the composer message through the session-proxy gateway SSE endpoint.
      *
+     * @param {string|null|undefined} [overrideMessage] When set, sends this text
+     *   instead of the composer value (used after patient picker selection).
      * @returns {Promise<void>}
      */
-    async function sendMessage() {
+    async function sendMessage(overrideMessage) {
         if (streaming) {
             return;
         }
@@ -1543,7 +1781,12 @@
         showGate(false, pid);
         boundPid = requestBoundPid;
 
-        var message = inputEl ? String(inputEl.value || '').trim() : '';
+        var message =
+            overrideMessage != null && String(overrideMessage).trim() !== ''
+                ? String(overrideMessage).trim()
+                : inputEl
+                  ? String(inputEl.value || '').trim()
+                  : '';
         if (!message) {
             setProgress(strings.enterMessage || 'Enter a message.');
             return;
@@ -1555,7 +1798,7 @@
         appendBubble('user', message);
         showTypingIndicator();
         pushTranscript('user', message);
-        if (inputEl) {
+        if (inputEl && overrideMessage == null) {
             inputEl.value = '';
         }
 
@@ -1867,6 +2110,9 @@
         openPicker: openPicker,
         closePicker: closePicker,
         loadSchedule: loadSchedule,
+        triggerPrefetch: triggerPrefetch,
+        bindPatientSession: bindPatientSession,
+        syncShellPatientContext: syncShellPatientContext,
         selectPatient: selectPatient,
         pushTranscript: pushTranscript,
         isAllowlistedHttpsUrl: isAllowlistedHttpsUrl,

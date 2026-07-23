@@ -41,6 +41,8 @@ class GraphState(TypedDict, total=False):
     draft_claims: Optional[DraftClaims]
     verified_claims: list[Claim]
     refusals: Annotated[list[Refusal], operator.add]
+    # Route narrative paragraph (unverified; PRD 08/10); prepended in emit assembly.
+    turn_summary: Optional[str]
     clinical_text: str
     # Ordered clinical segments (claim + assembly) for SSE; paired with citations (PRD 06).
     clinical_segments: list[dict[str, Any]]
@@ -48,4 +50,6 @@ class GraphState(TypedDict, total=False):
     citations: list[dict[str, Any]]
     # Stable non-PHI error code (see errors.py); truthy short-circuits the graph to emit.
     error: str
+    # PRD 09: background prefetch jobs skip route LLM when route is brief.
+    prefetch: bool
     progress_messages: Annotated[list[str], operator.add]

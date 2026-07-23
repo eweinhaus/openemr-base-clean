@@ -31,12 +31,14 @@ sidecar/
   Dockerfile
   requirements.txt
   app/
-    main.py            # FastAPI routes: /health, /ready, /v1/chat
+    main.py            # FastAPI routes: /health, /ready, /v1/chat, /v1/prefetch-brief
     auth.py            # shared-secret compare
     sse.py             # SSE framing
     stream.py          # run graph → yield SSE events
     tracing.py         # LangSmith hide policy + soft /ready probe
     graph.py           # LangGraph assembly
+    brief_cache.py     # In-memory TTL brief cache (PRD 09)
+    prefetch.py        # Background prefetch queue (PRD 09)
     state.py           # GraphState + shared messages/limits
     llm.py             # OpenRouter Haiku route/draft helpers
     claims.py          # claim schema, parse, verify, assemble
@@ -105,6 +107,25 @@ Wrong secret → `401` with `{"error":"unauthorized"}`. Unbound pid → clinical
 refusal text. Empty or >4000-char message → SSE `error` frame. When
 `ready=false` → SSE `error` with `code=sidecar_unready` (no clinical).
 
+Prefetch brief (JSON — background queue, no SSE):
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/v1/prefetch-brief \
+  -H "Content-Type: application/json" \
+  -H "X-Copilot-Internal-Secret: dev-secret-change-me" \
+  -d '{
+    "user_id": 1,
+    "username": "admin",
+    "pid": 6,
+    "correlation_id": "prefetch-corr-1",
+    "prefetch": true
+  }'
+```
+
+Returns `{"ok": true, "queued": true}` when sidecar is ready;
+`{"ok": false, "error": "unready"}` when not. Jobs run sequentially and defer
+while `/v1/chat` SSE is active.
+
 ## Docker
 
 ```bash
@@ -131,6 +152,9 @@ pass the full env below). Healthcheck stays on **`/health` only** (never
 | `COPILOT_LLM_TIMEOUT_SECONDS` | `30` | Per-LLM-call budget (route and draft each) |
 | `COPILOT_TOOL_TIMEOUT_SECONDS` | `10` | Gateway tool / probe budget |
 | `COPILOT_READY_CACHE_TTL_SECONDS` | `30` | Cache `/v1/chat` readiness probes; `/ready` always fresh |
+| `COPILOT_BRIEF_CACHE_TTL_SECONDS` | `1800` | Hard TTL for prefetched brief payloads (30 min) |
+| `COPILOT_BRIEF_CACHE_SOFT_REFRESH_SECONDS` | `600` | Soft refresh threshold for stale prefetch entries (10 min) |
+| `COPILOT_BRIEF_CACHE_SCHEMA_VERSION` | `1` | Cache key schema version — bump to invalidate all entries |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing when key is set |
 | `LANGSMITH_API_KEY` | empty | Optional; chat works without it (silent disable) |
 | `LANGSMITH_PROJECT` | `openemr-copilot-demo` | LangSmith project name |

@@ -103,6 +103,21 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - Optional `OPENFDA_API_KEY`; chart facts omit RxCUI when present → query by scrubbed name
 - Canonical PRD: `docs/PRDs/05-research-tools.md` (H1–H17 invariants)
 
+## Brief narrative synthesis pattern (PRD 08 + PRD 10 — implemented)
+
+- Graph: `verify → synthesize → emit` on `route=brief|labs|meds` when verified > 0; zero verified → skip synthesize
+- Haiku call on verified fact texts + domain empty/unavailable flags (not raw tool JSON)
+- Output: `turn_summary` = route-specific fixed label + unverified paragraph; emit prepends `{kind:"summary"}` before claim segments
+- Route labels: brief `Chart summary —`; labs `Lab summary —`; meds `Medication summary —`
+- **UI collapse (PRD 10):** claim segments + Source controls collapsed by default; assembly/disclaimer always visible
+- **Guard (`diagnose_guard_summary`):** deterministic, no LLM retry
+  - **Hard fail:** novel numeric values + length >1200
+  - **Date-aware numeric grounding:** verified ISO/spelled dates → allow day/month/year in any reformat
+  - **Soft / logged only:** vocabulary (`novel_tokens`) — not a hard gate
+  - **On fail:** log warning; emit claims-only (no SSE error if claims exist)
+- Progress: `Summarizing…` emitted from synthesize node before Haiku call
+- Canonical PRDs: `docs/PRDs/08-brief-narrative-synthesis.md`, `docs/PRDs/10-conversational-synthesis-all-routes.md`
+
 ## Citations pattern (PRD 06 — implemented)
 
 - `claims.build_clinical_payload` + `build_citation_records`; `emit_node` → state `clinical_text` / `clinical_segments` / `citations`
@@ -112,6 +127,16 @@ Physician → Ask Co-Pilot tab → session-proxy gateway (session + pid + correl
 - Progress allowlist in `sidecar/app/progress.py` (`Pulling chart…` / labs / meds); research keeps `Looking up label information…`
 - `fhir_uuid`/`retrieved_at` deferred null; historical transcript re-hydrate deferred
 - Canonical PRD: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13)
+
+## Brief prefetch cache pattern (PRD 09 — implemented)
+
+- **Trigger:** JS `triggerPrefetch()` after schedule load + after auto-brief completes; fire-and-forget `POST prefetch.php`
+- **PHP:** `SchedulePrefetchSelector` top-3 pids (picker parity); `PrefetchBriefService` mints separate correlation binds; never client-supplied pids
+- **Sidecar:** `POST /v1/prefetch-brief` enqueues sequential worker; `prefetch=true` + `route=brief` skips route LLM; defer while chat active
+- **Cache:** `brief_cache.py` in-memory `(user_id, pid, schema_version)`; full post-verify emit payload; TTL 30m / soft refresh 10m
+- **Serve:** `is_auto_brief_message` + empty transcript → replay `clinical` → `citation` → `done` (no graph); log `cached_serve`
+- **Interactive bind unchanged:** `stream.php` session correlation only; prefetch uses its own correlation per pid
+- Canonical PRD: `docs/PRDs/09-brief-prefetch-cache.md` (H1–H8)
 
 ## Observability pattern (PRD 07 — implemented thin)
 

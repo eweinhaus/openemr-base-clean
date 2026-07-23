@@ -22,6 +22,8 @@ LLM_TEMPERATURE = 0.0
 
 VALID_ROUTES = frozenset({"brief", "labs", "meds"})
 
+AUTO_BRIEF_MESSAGE = "Brief me on this patient."
+
 ROUTE_SYSTEM_PROMPT = (
     "You classify clinical co-pilot user messages into exactly one route. "
     "Reply with only one word: brief, labs, or meds. "
@@ -46,6 +48,64 @@ DRAFT_SYSTEM_PROMPT = (
     "(for example dosing without a retrieved label source)."
 )
 
+BRIEF_DRAFT_ADDENDUM = (
+    "Select approximately 5–10 highest-signal facts for a pre-visit brief. "
+    "Prioritize: (1) last visit / encounter reason, (2) active conditions, "
+    "(3) allergies if present, (4) abnormal or recent labs over normals, "
+    "(5) at most one recent note. Use locators from tool results only."
+)
+
+LABS_DRAFT_ADDENDUM = (
+    "Select lab results relevant to the question; prefer most recent; "
+    "include abnormal wording when in fact text."
+)
+
+MEDS_DRAFT_ADDENDUM = (
+    "For lists include active Rx and allergies; for dosing include research_label "
+    "locators when present; never claim off-chart drugs as patient Rx."
+)
+
+ROUTE_SUMMARY_LABELS: dict[Route, str] = {
+    "brief": "Chart summary — verify sources below.",
+    "labs": "Lab summary — verify sources below.",
+    "meds": "Medication summary — verify sources below.",
+}
+
+SYNTHESIZE_SYSTEM_PROMPT = (
+    "Write a short professional clinical pre-visit summary as JSON only. "
+    'Use this exact shape: {"summary":"..."}. '
+    "Voice: professional clinical tone opening with "
+    '"Patient presents for…" when visit reason is known. '
+    "Open with visit reason or last encounter when provided in verified facts. "
+    "Include verified allergies and abnormal labs when present in verified facts. "
+    "You may note chart gaps using the provided domain flags only — do not invent "
+    "unavailable or empty-domain copy beyond those flags. "
+    "Do not introduce new clinical facts, values, dates, or medications beyond "
+    "what appears in verified facts. Prefer the exact date strings from verified "
+    "facts (do not reformat dates). Target roughly 80–150 words. "
+    "No markdown, bullets, or citation markers."
+)
+
+SYNTHESIZE_LABS_SYSTEM_PROMPT = (
+    "Write a short direct answer about laboratory results as JSON only. "
+    'Use this exact shape: {"summary":"..."}. '
+    "Answer the user's question directly. Put abnormal values first when present. "
+    "Use only verified lab fact texts — do not introduce new values, dates, or tests. "
+    "Do not discuss medications or allergies unless they appear in verified lab facts. "
+    "Target roughly 40–80 words. No markdown, bullets, or citation markers."
+)
+
+SYNTHESIZE_MEDS_SYSTEM_PROMPT = (
+    "Write a short medication-focused answer as JSON only. "
+    'Use this exact shape: {"summary":"..."}. '
+    "For medication list questions: prose summary of active medications; "
+    "mention verified allergies or conditions when present in verified facts. "
+    "For dosing questions: paraphrase only verified chart and research dose facts; "
+    "do not invent dosing. Never replace or duplicate decision-support disclaimers, "
+    "not-on-list lines, or refusal copy — those appear separately in assembly. "
+    "Target roughly 40–80 words. No markdown, bullets, or citation markers."
+)
+
 logger = logging.getLogger(__name__)
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
@@ -64,6 +124,13 @@ class LlmError(Exception):
 def set_correlation_id(correlation_id: str | None) -> None:
     """Set correlation id for LLM log context (never logged message bodies)."""
     _correlation_id.set(correlation_id)
+
+
+def is_auto_brief_message(message: str) -> bool:
+    """Return True when message matches the auto-brief bind prompt (normalized)."""
+    normalized = re.sub(r"\s+", " ", message.strip().lower())
+    target = re.sub(r"\s+", " ", AUTO_BRIEF_MESSAGE.strip().lower())
+    return normalized == target
 
 
 def normalize_route(raw: str) -> Route:
@@ -94,14 +161,72 @@ def draft_claims_raw(
     message: str,
     tool_results: list[Any],
     transcript: list | None = None,
+    *,
+    route: Route | str = "brief",
 ) -> str:
     """Draft claims JSON from tool facts via Haiku (verify happens elsewhere)."""
     user_prompt = _build_draft_user_prompt(message, tool_results, transcript)
+    system_prompt = DRAFT_SYSTEM_PROMPT
+    if route == "brief":
+        system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{BRIEF_DRAFT_ADDENDUM}"
+    elif route == "labs":
+        system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{LABS_DRAFT_ADDENDUM}"
+    elif route == "meds":
+        system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{MEDS_DRAFT_ADDENDUM}"
     return _chat_completion(
         purpose="draft",
-        system_prompt=DRAFT_SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         user_prompt=user_prompt,
         json_mode=True,
+    )
+
+
+def synthesize_turn_raw(
+    route: Route | str,
+    message: str,
+    verified_facts: list[dict[str, str]],
+    domain_context: dict[str, Any],
+    transcript: list | None = None,
+) -> str:
+    """Synthesize route narrative JSON from verified fact texts only."""
+    route_key = normalize_route(str(route))
+    if route_key == "labs":
+        system_prompt = SYNTHESIZE_LABS_SYSTEM_PROMPT
+    elif route_key == "meds":
+        system_prompt = SYNTHESIZE_MEDS_SYSTEM_PROMPT
+    else:
+        system_prompt = SYNTHESIZE_SYSTEM_PROMPT
+
+    facts_json = json.dumps(verified_facts, separators=(",", ":"), default=str)
+    domain_json = json.dumps(domain_context, separators=(",", ":"), default=str)
+    transcript_text = _format_transcript(transcript)
+    user_prompt = (
+        f"User message:\n{message.strip()}\n\n"
+        f"Recent transcript (last {MAX_TRANSCRIPT_TURNS} turns):\n{transcript_text}\n\n"
+        f"Verified facts (use only these clinical details):\n{facts_json}\n\n"
+        f"Domain flags (for gap narration only):\n{domain_json}"
+    )
+    return _chat_completion(
+        purpose="synthesize",
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        json_mode=True,
+    )
+
+
+def synthesize_brief_raw(
+    message: str,
+    verified_facts: list[dict[str, str]],
+    domain_context: dict[str, Any],
+    transcript: list | None = None,
+) -> str:
+    """Synthesize brief narrative JSON from verified fact texts only."""
+    return synthesize_turn_raw(
+        "brief",
+        message,
+        verified_facts,
+        domain_context,
+        transcript,
     )
 
 

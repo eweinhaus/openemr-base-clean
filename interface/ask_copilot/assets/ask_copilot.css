@@ -356,6 +356,34 @@
     word-wrap: break-word;
 }
 
+.ask-copilot-segment-summary {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.ask-copilot-segment-summary .ask-copilot-segment-text {
+    line-height: 1.45;
+    color: #343a40;
+}
+
+.ask-copilot-sources-toggle {
+    display: block;
+    margin: 0.25rem 0 0.5rem;
+    padding-left: 0;
+    text-align: left;
+}
+
+.ask-copilot-sources-panel {
+    margin-left: 0.75rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid #dee2e6;
+}
+
+.ask-copilot-sources-panel .ask-copilot-segment:last-child {
+    margin-bottom: 0;
+}
+
 .ask-copilot-cite-ref,
 .ask-copilot-source {
     display: inline-flex;

@@ -4,8 +4,8 @@
 
 /**
  * Tests for interface/ask_copilot/assets/ask_copilot.js — citation Source
- * controls, in-pane popup, URL allowlist, and clinical+citation SSE buffering
- * (PRD 06 Wave 1 S3).
+ * controls, in-pane popup, URL allowlist, clinical+citation SSE buffering
+ * (PRD 06 Wave 1 S3), and collapsed verified-sources UI (PRD 10 Wave 1).
  *
  * Run with: npm run test:js -- tests/js/ask-copilot-citations.test.js
  *
@@ -351,6 +351,280 @@ describe('renderAssistantTurn', () => {
         expect(el('acp-messages').querySelector('img')).toBeNull();
         expect(window.xssFired).toBeUndefined();
         expect(el('acp-messages').textContent).toContain(evil);
+    });
+
+    test('renders summary segments without Source controls', async () => {
+        const app = loadApp();
+        await flush();
+
+        const summaryText =
+            'Chart summary — verify sources below.\n\nPatient presents for follow-up.';
+        app.renderAssistantTurn(
+            [
+                { kind: 'summary', text: summaryText },
+                { kind: 'claim', text: 'Last visit 2024-03-01', citation_id: 'c1' }
+            ],
+            {
+                c1: {
+                    citation_id: 'c1',
+                    source_type: 'chart',
+                    title: 'Encounter',
+                    excerpt: 'Office visit',
+                    locator: { table: 'form_encounter', id: '1', url: null }
+                }
+            }
+        );
+
+        const summaryEl = el('acp-messages').querySelector('.ask-copilot-segment-summary');
+        expect(summaryEl).not.toBeNull();
+        expect(summaryEl.querySelector('.ask-copilot-source')).toBeNull();
+        expect(summaryEl.textContent).toContain('Chart summary — verify sources below.');
+        expect(el('acp-messages').querySelectorAll('.ask-copilot-source')).toHaveLength(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// renderAssistantTurn — collapsed verified sources (PRD 10 Wave 1 Task 1.3)
+// ---------------------------------------------------------------------------
+describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
+
+    const BRIEF_SUMMARY =
+        'Chart summary — verify sources below.\n\nPatient presents for follow-up.';
+
+    /** summary + two claims + assembly — typical synthesized turn shape. */
+    const MIXED_SEGMENTS = [
+        { kind: 'summary', text: BRIEF_SUMMARY },
+        { kind: 'claim', text: 'LDL 142 mg/dL', citation_id: 'c1' },
+        { kind: 'claim', text: 'On simvastatin 20 mg', citation_id: 'c2' },
+        { kind: 'assembly', text: 'Not medical advice.' }
+    ];
+
+    function buildCitationMap() {
+        const map = {};
+        SAMPLE_CITATIONS.forEach(function (c) {
+            map[c.citation_id] = c;
+        });
+        return map;
+    }
+
+    function assistantBubble() {
+        return el('acp-messages').querySelector(
+            '.ask-copilot-bubble-assistant:not(.ask-copilot-typing)'
+        );
+    }
+
+    function sourcesPanel(bubble) {
+        return (bubble || assistantBubble()).querySelector('.ask-copilot-sources-panel');
+    }
+
+    function sourcesToggle(bubble) {
+        const root = bubble || assistantBubble();
+        return (
+            root.querySelector('.ask-copilot-sources-toggle') ||
+            root.querySelector('button[aria-expanded]')
+        );
+    }
+
+    test('defaults to collapsed claims: summary and assembly visible, panel hidden', async () => {
+        const app = loadApp();
+        await flush();
+
+        app.renderAssistantTurn(MIXED_SEGMENTS, buildCitationMap());
+
+        const bubble = assistantBubble();
+        expect(bubble).not.toBeNull();
+
+        const panel = sourcesPanel(bubble);
+        expect(panel).not.toBeNull();
+        expect(panel.hidden).toBe(true);
+
+        const toggle = sourcesToggle(bubble);
+        expect(toggle).not.toBeNull();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.textContent).toBe('Show verified sources (2)');
+
+        const summaryEl = bubble.querySelector('.ask-copilot-segment-summary');
+        expect(summaryEl).not.toBeNull();
+        expect(summaryEl.textContent).toContain('Chart summary — verify sources below.');
+        expect(summaryEl.closest('.ask-copilot-sources-panel')).toBeNull();
+
+        const assemblySeg = Array.from(bubble.querySelectorAll('.ask-copilot-segment')).find(
+            function (seg) {
+                return seg.textContent.indexOf('Not medical advice.') !== -1;
+            }
+        );
+        expect(assemblySeg).not.toBeUndefined();
+        expect(assemblySeg.closest('.ask-copilot-sources-panel')).toBeNull();
+
+        expect(panel.querySelectorAll('.ask-copilot-source')).toHaveLength(2);
+        expect(
+            bubble.querySelectorAll(
+                '.ask-copilot-sources-panel:not([hidden]) .ask-copilot-source'
+            )
+        ).toHaveLength(0);
+    });
+
+    test('toggle expands panel and reveals Source controls on claims', async () => {
+        const app = loadApp();
+        await flush();
+
+        app.renderAssistantTurn(MIXED_SEGMENTS, buildCitationMap());
+
+        const bubble = assistantBubble();
+        const toggle = sourcesToggle(bubble);
+        toggle.click();
+
+        const panel = sourcesPanel(bubble);
+        expect(panel.hidden).toBe(false);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.textContent).toBe('Hide sources');
+
+        const sources = panel.querySelectorAll('.ask-copilot-source');
+        expect(sources).toHaveLength(2);
+        expect(sources[0].getAttribute('data-cite-id')).toBe('c1');
+        expect(sources[1].getAttribute('data-cite-id')).toBe('c2');
+        expect(panel.textContent).toContain('LDL 142 mg/dL');
+        expect(panel.textContent).toContain('On simvastatin 20 mg');
+    });
+
+    test('Source click after expand opens citation dialog via registry', async () => {
+        const app = loadApp();
+        await flush();
+
+        app.renderAssistantTurn(MIXED_SEGMENTS, buildCitationMap());
+
+        const bubble = assistantBubble();
+        sourcesToggle(bubble).click();
+
+        const sourceBtn = sourcesPanel(bubble).querySelector('.ask-copilot-source');
+        expect(sourceBtn).not.toBeNull();
+        sourceBtn.focus();
+        sourceBtn.click();
+
+        expect(citeVisible()).toBe(true);
+        expect(el('acp-cite-body').textContent).toContain('Lab result');
+        expect(el('acp-cite-body').textContent).toContain('LDL 142 mg/dL');
+    });
+
+    test('brief turn uses same collapse behavior as other routes', async () => {
+        const app = loadApp();
+        await flush();
+
+        app.renderAssistantTurn(
+            [
+                { kind: 'summary', text: BRIEF_SUMMARY },
+                { kind: 'claim', text: 'HbA1c 7.2%', citation_id: 'c1' },
+                { kind: 'assembly', text: 'Not medical advice.' }
+            ],
+            buildCitationMap()
+        );
+
+        const bubble = assistantBubble();
+        const panel = sourcesPanel(bubble);
+        expect(panel).not.toBeNull();
+        expect(panel.hidden).toBe(true);
+
+        const toggle = sourcesToggle(bubble);
+        expect(toggle.textContent).toBe('Show verified sources (1)');
+        expect(bubble.querySelector('.ask-copilot-segment-summary')).not.toBeNull();
+        expect(panel.querySelectorAll('.ask-copilot-source')).toHaveLength(1);
+        expect(
+            bubble.querySelectorAll(
+                '.ask-copilot-sources-panel:not([hidden]) .ask-copilot-source'
+            )
+        ).toHaveLength(0);
+
+        toggle.click();
+        expect(panel.hidden).toBe(false);
+        expect(panel.querySelectorAll('.ask-copilot-source')).toHaveLength(1);
+    });
+
+    test('empty allergy and notes assembly lines render inside collapsed panel', async () => {
+        const app = loadApp();
+        await flush();
+
+        const segments = [
+            { kind: 'summary', text: BRIEF_SUMMARY },
+            { kind: 'claim', text: 'LDL 142 mg/dL', citation_id: 'c1' },
+            { kind: 'assembly', text: 'No allergies on file.' },
+            { kind: 'assembly', text: 'No recent notes on file.' },
+            { kind: 'assembly', text: 'Not medical advice.' }
+        ];
+
+        app.renderAssistantTurn(segments, buildCitationMap());
+
+        const bubble = assistantBubble();
+        const panel = sourcesPanel(bubble);
+        expect(panel).not.toBeNull();
+        expect(panel.hidden).toBe(true);
+        expect(panel.textContent).toContain('No allergies on file.');
+        expect(panel.textContent).toContain('No recent notes on file.');
+
+        const allergySeg = Array.from(panel.querySelectorAll('.ask-copilot-segment')).find(
+            function (seg) {
+                return seg.textContent.indexOf('No allergies on file.') !== -1;
+            }
+        );
+        expect(allergySeg).not.toBeUndefined();
+        expect(allergySeg.querySelector('.ask-copilot-source')).toBeNull();
+
+        const notesSeg = Array.from(panel.querySelectorAll('.ask-copilot-segment')).find(
+            function (seg) {
+                return seg.textContent.indexOf('No recent notes on file.') !== -1;
+            }
+        );
+        expect(notesSeg).not.toBeUndefined();
+        expect(notesSeg.querySelector('.ask-copilot-source')).toBeNull();
+
+        const disclaimerSeg = Array.from(bubble.querySelectorAll('.ask-copilot-segment')).find(
+            function (seg) {
+                return seg.textContent.indexOf('Not medical advice.') !== -1;
+            }
+        );
+        expect(disclaimerSeg).not.toBeUndefined();
+        expect(disclaimerSeg.closest('.ask-copilot-sources-panel')).toBeNull();
+        expect(panel.textContent).not.toContain('Not medical advice.');
+    });
+
+    test('assembly and disclaimer segments render outside collapsed panel', async () => {
+        const app = loadApp();
+        await flush();
+
+        const segments = [
+            { kind: 'summary', text: 'Medication summary — verify sources below.\n\nOn statin therapy.' },
+            { kind: 'claim', text: 'On simvastatin 20 mg', citation_id: 'c2' },
+            { kind: 'assembly', text: 'Not medical advice.' },
+            { kind: 'assembly', text: 'Dosing guidance is informational only; confirm against chart.' }
+        ];
+
+        app.renderAssistantTurn(segments, buildCitationMap());
+
+        const bubble = assistantBubble();
+        const panel = sourcesPanel(bubble);
+        expect(panel).not.toBeNull();
+        expect(panel.hidden).toBe(true);
+
+        expect(bubble.textContent).toContain('Medication summary — verify sources below.');
+        expect(bubble.textContent).toContain('Not medical advice.');
+        expect(bubble.textContent).toContain(
+            'Dosing guidance is informational only; confirm against chart.'
+        );
+
+        const assemblySegs = Array.from(bubble.querySelectorAll('.ask-copilot-segment')).filter(
+            function (seg) {
+                return (
+                    seg.textContent.indexOf('Not medical advice.') !== -1 ||
+                    seg.textContent.indexOf('Dosing guidance is informational only') !== -1
+                );
+            }
+        );
+        expect(assemblySegs).toHaveLength(2);
+        assemblySegs.forEach(function (seg) {
+            expect(seg.closest('.ask-copilot-sources-panel')).toBeNull();
+        });
+
+        expect(panel.textContent).not.toContain('Not medical advice.');
+        expect(panel.textContent).not.toContain('Dosing guidance is informational only');
     });
 });
 

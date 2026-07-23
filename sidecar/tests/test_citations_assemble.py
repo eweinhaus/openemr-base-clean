@@ -10,6 +10,7 @@ from sidecar.app.claims import (
     build_citation_records,
     build_clinical_payload,
 )
+from sidecar.app.nodes.synthesize import SUMMARY_LABEL
 from sidecar.app.research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
     RESEARCH_TOOL_NAME,
@@ -66,6 +67,47 @@ def test_build_clinical_payload_claim_segments_have_citation_ids() -> None:
     for segment in payload["segments"]:
         assert segment["kind"] == "claim"
         assert "citation_id" in segment
+
+
+def test_build_clinical_payload_with_turn_summary_prepends_summary_segment() -> None:
+    verified = [
+        _claim("Last visit 2024-03-01 — follow-up", table="form_encounter", fact_id="7"),
+        _claim("Creatinine 1.4 mg/dL", fact_id="42"),
+    ]
+    turn_summary = (
+        f"{SUMMARY_LABEL}\n\n"
+        "Patient presents for follow-up. Last visit was 2024-03-01."
+    )
+
+    payload = build_clinical_payload(verified, [], turn_summary=turn_summary)
+
+    assert payload["segments"][0] == {
+        "kind": "summary",
+        "text": turn_summary,
+    }
+    assert "citation_id" not in payload["segments"][0]
+    assert payload["segments"][1]["kind"] == "claim"
+    assert payload["segments"][1]["citation_id"] == "c1"
+    assert payload["segments"][2]["kind"] == "claim"
+    assert payload["segments"][2]["citation_id"] == "c2"
+    assert payload["text"].startswith(SUMMARY_LABEL)
+    assert "Last visit 2024-03-01 — follow-up" in payload["text"]
+
+
+def test_build_clinical_payload_summary_claims_assembly_order() -> None:
+    verified = [_claim("Creatinine 1.4 mg/dL")]
+    turn_summary = f"{SUMMARY_LABEL}\n\nPatient presents for lab review."
+    payload = build_clinical_payload(
+        verified,
+        [],
+        tool_results=[{"ok": True, "tool": "notes", "data": {"facts": []}}],
+        requested_tools=["notes"],
+        turn_summary=turn_summary,
+    )
+
+    kinds = [segment["kind"] for segment in payload["segments"]]
+    assert kinds == ["summary", "claim", "assembly"]
+    assert payload["segments"][-1]["text"] == "No recent notes on file."
 
 
 def test_assembly_segments_never_have_citation_id() -> None:

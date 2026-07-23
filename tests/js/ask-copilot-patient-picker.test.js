@@ -15,6 +15,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const { TextEncoder, TextDecoder } = require('util');
+const { ReadableStream } = require('stream/web');
+
+// jsdom does not provide these Web APIs; the SSE client needs them.
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+global.ReadableStream = ReadableStream;
 
 const src = fs.readFileSync(
     path.resolve(__dirname, '../../interface/ask_copilot/assets/ask_copilot.js'),
@@ -89,12 +96,41 @@ function jsonResponse(data, ok = true, status = 200) {
     return { ok, status, json: async () => data };
 }
 
-function mockFetchResponse(url) {
+function sseDoneResponse() {
+    const text = 'event: done\ndata: {"correlation_id":"test"}\n\n';
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(new TextEncoder().encode(text));
+            controller.close();
+        }
+    });
+    return { ok: true, status: 200, body: stream };
+}
+
+function mockFetchResponse(url, opts) {
+    if (String(url).indexOf('stream.php') !== -1) {
+        return Promise.resolve(sseDoneResponse());
+    }
     if (String(url).indexOf('patient.php') !== -1) {
         return jsonResponse({
             pid: sessionPid,
             name: sessionPid != null ? PATIENT_NAMES[sessionPid] || null : null
         });
+    }
+    if (String(url).indexOf('bind.php') !== -1) {
+        var params = new URLSearchParams(
+            opts && opts.body ? opts.body : ''
+        );
+        var boundPid = parseInt(params.get('pid'), 10);
+        return jsonResponse({
+            pid: boundPid,
+            name: PATIENT_NAMES[boundPid] || null,
+            pubpid: String(boundPid),
+            dob_display: null
+        });
+    }
+    if (String(url).indexOf('prefetch.php') !== -1) {
+        return jsonResponse({ queued: [6, 7] }, true, 202);
     }
     return jsonResponse(SCHEDULE);
 }
@@ -108,6 +144,7 @@ function loadApp(configOverrides = {}) {
             streamUrl: '/openemr/interface/ask_copilot/stream.php',
             scheduleUrl: '/openemr/interface/ask_copilot/schedule.php',
             patientUrl: '/openemr/interface/ask_copilot/patient.php',
+            bindUrl: '/openemr/interface/ask_copilot/bind.php',
             sessionPid: null,
             pickerPollIntervalMs: 100,
             pickerPollTimeoutMs: 1000,
@@ -147,6 +184,12 @@ function pressEscape() {
     );
 }
 
+function prefetchCalls() {
+    return window.fetch.mock.calls.filter(
+        (call) => String(call[0]).indexOf('prefetch.php') !== -1
+    );
+}
+
 beforeEach(() => {
     jest.useFakeTimers();
     sessionPid = null;
@@ -162,8 +205,8 @@ beforeEach(() => {
     window.webroot_url = '/openemr';
     window.RTop = {};
     window.confirm = jest.fn(() => true);
-    window.fetch = jest.fn().mockImplementation((url) =>
-        Promise.resolve(mockFetchResponse(url))
+    window.fetch = jest.fn().mockImplementation((url, opts) =>
+        Promise.resolve(mockFetchResponse(url, opts))
     );
 });
 
@@ -215,8 +258,11 @@ describe('unbound patient gate', () => {
         loadApp();
         await flush();
 
-        expect(window.fetch).toHaveBeenCalledTimes(1);
-        const [url, opts] = window.fetch.mock.calls[0];
+        const scheduleCall = window.fetch.mock.calls.find(
+            (call) => String(call[0]).indexOf('schedule.php') !== -1
+        );
+        expect(scheduleCall).toBeDefined();
+        const [url, opts] = scheduleCall;
         expect(url).toContain('/interface/ask_copilot/schedule.php');
         expect(url).toContain('csrf_token_form=test-csrf');
         expect(opts.credentials).toBe('same-origin');
@@ -331,21 +377,27 @@ describe('schedule rendering', () => {
 // ---------------------------------------------------------------------------
 describe('patient selection', () => {
 
-    test('clicking next patient navigates RTop and binds after fast poll', async () => {
+    test('clicking next patient binds via bind.php and stays on Ask Co-Pilot', async () => {
         loadApp();
         await flush();
 
         el('acp-picker-next').querySelector('button').click();
         await flush();
 
-        expect(String(window.RTop.location)).toContain(
-            '/interface/patient_file/summary/demographics.php?set_pid=6'
+        const bindCall = window.fetch.mock.calls.find(
+            (call) => String(call[0]).indexOf('bind.php') !== -1
         );
+        expect(bindCall).toBeDefined();
+        expect(bindCall[1].method).toBe('POST');
+        expect(String(bindCall[1].body)).toContain('pid=6');
+        expect(window.RTop.location).toBeUndefined();
+        expect(window.activateTabByName).toHaveBeenCalledWith('acp', true);
         expect(el('acp-picker-status').textContent).not.toBe('');
         expect(pickerVisible()).toBe(true);
 
         sessionPid = 6;
         await jest.advanceTimersByTimeAsync(300);
+        await flush();
 
         expect(pickerVisible()).toBe(false);
         expect(backdropVisible()).toBe(false);
@@ -353,6 +405,29 @@ describe('patient selection', () => {
         expect(el('acp-input').disabled).toBe(false);
         expect(el('acp-patient-line').textContent).toContain('Jane Doe');
         expect(window.AskCopilot.getState().boundPid).toBe(6);
+    });
+
+    test('successful picker selection auto-sends the brief prompt', async () => {
+        loadApp({
+            strings: { autoBriefMessage: 'Brief me on this patient.' }
+        });
+        await flush();
+
+        el('acp-picker-next').querySelector('button').click();
+        await flush();
+        sessionPid = 6;
+        await jest.advanceTimersByTimeAsync(300);
+        await flush();
+
+        const streamCall = window.fetch.mock.calls.find(
+            (call) => String(call[0]).indexOf('stream.php') !== -1
+        );
+        expect(streamCall).toBeDefined();
+        expect(streamCall[1].method).toBe('POST');
+        const streamBody = new URLSearchParams(String(streamCall[1].body));
+        expect(streamBody.get('message')).toBe('Brief me on this patient.');
+        expect(el('acp-messages').textContent).toContain('Brief me on this patient.');
+        expect(el('acp-input').value).toBe('');
     });
 
     test('poll timeout leaves popup open with retryable error', async () => {
@@ -372,9 +447,8 @@ describe('patient selection', () => {
         expect(window.AskCopilot.getState().pickerBusy).toBe(false);
     });
 
-    test('degrades to Finder when top.RTop is unavailable', async () => {
-        delete window.RTop;
-        loadApp();
+    test('degrades to Finder when bindUrl is unavailable', async () => {
+        loadApp({ bindUrl: '' });
         await flush();
 
         el('acp-picker-next').querySelector('button').click();
@@ -489,10 +563,87 @@ describe('bound patient', () => {
         await flush();
         sessionPid = 6;
         await jest.advanceTimersByTimeAsync(300);
+        await flush();
 
         expect(pickerVisible()).toBe(false);
         expect(app.getState().boundPid).toBe(6);
-        expect(app.getState().transcriptLength).toBe(0);
+        expect(app.getState().transcriptLength).toBe(1);
+        expect(el('acp-messages').textContent).toContain('Brief me on this patient.');
         expect(el('acp-patient-line').textContent).toContain('Jane Doe');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Brief prefetch (PRD 09 Wave 4 P7)
+// ---------------------------------------------------------------------------
+describe('brief prefetch', () => {
+
+    const PREFETCH_URL = '/openemr/interface/ask_copilot/prefetch.php';
+
+    test('fires prefetch POST after schedule loads', async () => {
+        loadApp({ prefetchUrl: PREFETCH_URL });
+        await flush();
+
+        expect(prefetchCalls()).toHaveLength(1);
+        const [url, opts] = prefetchCalls()[0];
+        expect(url).toBe(PREFETCH_URL);
+        expect(opts.method).toBe('POST');
+        expect(opts.credentials).toBe('same-origin');
+        expect(String(opts.body)).toBe('csrf_token_form=test-csrf');
+        expect(opts.headers.Accept).toBe('application/json');
+        expect(opts.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    });
+
+    test('fires prefetch POST again after auto-brief completes', async () => {
+        loadApp({
+            prefetchUrl: PREFETCH_URL,
+            strings: { autoBriefMessage: 'Brief me on this patient.' }
+        });
+        await flush();
+
+        el('acp-picker-next').querySelector('button').click();
+        await flush();
+        sessionPid = 6;
+        await jest.advanceTimersByTimeAsync(300);
+        await flush();
+
+        expect(prefetchCalls()).toHaveLength(2);
+    });
+
+    test('skips prefetch while streaming', async () => {
+        window.fetch = jest.fn().mockImplementation((url, opts) => {
+            if (String(url).indexOf('stream.php') !== -1) {
+                return new Promise(() => {});
+            }
+            return Promise.resolve(mockFetchResponse(url, opts));
+        });
+
+        sessionPid = 5;
+        const app = loadApp({ prefetchUrl: PREFETCH_URL });
+        await flush();
+
+        expect(prefetchCalls()).toHaveLength(0);
+
+        app.sendMessage('hello');
+        await flush();
+        expect(app.getState().streaming).toBe(true);
+
+        app.triggerPrefetch();
+        expect(prefetchCalls()).toHaveLength(0);
+    });
+
+    test('prefetch errors do not break the picker', async () => {
+        window.fetch = jest.fn().mockImplementation((url, opts) => {
+            if (String(url).indexOf('prefetch.php') !== -1) {
+                return Promise.reject(new Error('prefetch down'));
+            }
+            return Promise.resolve(mockFetchResponse(url, opts));
+        });
+
+        loadApp({ prefetchUrl: PREFETCH_URL });
+        await flush();
+
+        expect(pickerVisible()).toBe(true);
+        expect(el('acp-picker-next').textContent).toContain('Jane Doe');
     });
 });

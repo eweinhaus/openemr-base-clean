@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterator, Optional
 
+from .brief_cache import get_brief_cache
 from .errors import ERROR_UNEXPECTED, sse_error_payload
 from .gateway_client import GatewayClient
 from .graph import build_graph
-from .llm import MAX_TRANSCRIPT_TURNS
+from .llm import MAX_TRANSCRIPT_TURNS, is_auto_brief_message
 from .state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,58 @@ def build_initial_state(
     )
 
 
+def _transcript_is_emptyish(transcript: list[Any]) -> bool:
+    """True when transcript is empty or only blank user/assistant turns."""
+    if not transcript:
+        return True
+    for entry in transcript:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        text = entry.get("text")
+        if role not in ("user", "assistant"):
+            continue
+        if isinstance(text, str) and text.strip():
+            return False
+    return True
+
+
+def try_cached_brief_response(
+    user_id: Optional[int],
+    pid: Optional[int],
+    message: str,
+    transcript: list[Any],
+) -> Optional[list[tuple[str, dict[str, Any]]]]:
+    """Return cached brief SSE frames for auto-brief cache hits, else None."""
+    if not isinstance(user_id, int) or user_id <= 0:
+        return None
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if not is_auto_brief_message(message):
+        return None
+    if not _transcript_is_emptyish(transcript):
+        return None
+
+    entry = get_brief_cache().get(user_id, pid)
+    if entry is None:
+        return None
+
+    cache_correlation_id = str(entry.get("correlation_id", ""))
+    logger.info(
+        "cached_serve",
+        extra={"correlation_id": cache_correlation_id},
+    )
+
+    clinical_text = entry.get("clinical_text", "")
+    segments = entry.get("clinical_segments") or []
+    citations = entry.get("citations") or []
+    return [
+        ("clinical", {"text": clinical_text, "segments": segments}),
+        ("citation", {"citations": citations}),
+        ("done", {"correlation_id": cache_correlation_id}),
+    ]
+
+
 def iter_chat_events(
     *,
     gateway: GatewayClient,
@@ -67,6 +120,15 @@ def iter_chat_events(
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Sync generator: progress during graph stream, then clinical/error + done."""
     try:
+        cached = try_cached_brief_response(user_id, pid, message, transcript)
+        if cached is not None:
+            for event_name, payload in cached:
+                if event_name == "done":
+                    yield ("done", {"correlation_id": correlation_id})
+                else:
+                    yield (event_name, payload)
+            return
+
         graph = build_graph(gateway)
         initial = build_initial_state(
             correlation_id=correlation_id,

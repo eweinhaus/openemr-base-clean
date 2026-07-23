@@ -15,6 +15,7 @@ PROGRESS_PULLING_CHART = "Pulling chart…"
 PROGRESS_PULLING_LABS = "Pulling labs…"
 PROGRESS_CHECKING_MEDICATIONS = "Checking medications…"
 PROGRESS_REVIEWING_NOTES = "Reviewing chart notes…"
+PROGRESS_SUMMARIZING = "Summarizing…"
 
 
 def chart_progress_for_route(route: Route | str) -> str:

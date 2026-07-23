@@ -21,6 +21,7 @@ def draft_node(state: GraphState) -> dict[str, object]:
             state.get("message", ""),
             state.get("tool_results") or [],
             state.get("transcript"),
+            route=state.get("route", "brief"),
         )
         draft = parse_claims_json(raw)
     except LlmError as exc:

@@ -36,6 +36,8 @@ $csrfToken = CsrfUtils::collectCsrfToken($session);
 $streamUrl = $webroot . '/interface/ask_copilot/stream.php';
 $scheduleUrl = $webroot . '/interface/ask_copilot/schedule.php';
 $patientUrl = $webroot . '/interface/ask_copilot/patient.php';
+$bindUrl = $webroot . '/interface/ask_copilot/bind.php';
+$prefetchUrl = $webroot . '/interface/ask_copilot/prefetch.php';
 // Session pid for gate fallback when this page is top-level (not under main.php iframe).
 $sessionPidRaw = $session->get('pid');
 $sessionPid = is_numeric($sessionPidRaw) ? (int) $sessionPidRaw : 0;
@@ -155,6 +157,8 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
             streamUrl: <?php echo js_escape($streamUrl); ?>,
             scheduleUrl: <?php echo js_escape($scheduleUrl); ?>,
             patientUrl: <?php echo js_escape($patientUrl); ?>,
+            bindUrl: <?php echo js_escape($bindUrl); ?>,
+            prefetchUrl: <?php echo js_escape($prefetchUrl); ?>,
             sessionPid: <?php echo $sessionPid > 0 ? (int) $sessionPid : 'null'; ?>,
             sessionPatientName: <?php echo $sessionPatientName !== null ? js_escape($sessionPatientName) : 'null'; ?>,
             strings: {
@@ -175,12 +179,15 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
                 scheduleEmpty: <?php echo xlj('No appointments today. Use Search all patients.'); ?>,
                 scheduleError: <?php echo xlj('Could not load the schedule.'); ?>,
                 retry: <?php echo xlj('Retry'); ?>,
-                openingChart: <?php echo xlj('Opening chart...'); ?>,
+                openingChart: <?php echo xlj('Selecting patient...'); ?>,
                 bindTimeout: <?php echo xlj('Could not confirm the patient selection. Try again.'); ?>,
                 useFinder: <?php echo xlj('Select the patient from the search tab.'); ?>,
                 confirmSwitch: <?php echo xlj('Switching patients clears this chat. Continue?'); ?>,
+                autoBriefMessage: <?php echo xlj('Brief me on this patient.'); ?>,
                 dobPrefix: <?php echo xlj('DOB'); ?>,
                 sourceLabel: <?php echo xlj('Source'); ?>,
+                showVerifiedSources: <?php echo xlj('Show verified sources ({count})'); ?>,
+                hideSources: <?php echo xlj('Hide sources'); ?>,
                 citeSummary: <?php echo xlj('Summary'); ?>,
                 citeDetail: <?php echo xlj('Details'); ?>,
                 citeFrom: <?php echo xlj('From'); ?>,

@@ -2,6 +2,48 @@
 
 ## Current focus
 
+**PRD 10 conversational synthesis all routes (2026-07-23):** Generalized post-verify
+synthesis to `brief`, `labs`, `meds` when verified > 0. Renamed `brief_summary` →
+`turn_summary`. Route-specific labels + prompts; `Summarizing…` progress. Ask Co-Pilot
+UI collapses verified claim rows + Source controls by default; assembly/disclaimer always
+visible. Sidecar pytest **227**; Jest citations **19**. Manual M1–M5 not run this session.
+
+**PRD 09 brief prefetch cache (2026-07-23):** Tab open + post auto-brief
+trigger `POST prefetch.php` → server top-3 schedule pids → separate correlation
+binds → sidecar `/v1/prefetch-brief` sequential worker (defer while chat active).
+Cache: process-local `(user_id, pid, schema_version=1)`, TTL 30m, soft refresh
+10m. Serve: `is_auto_brief_message` + empty transcript → SSE replay (no graph).
+Interactive `stream.php` session bind unchanged. Tests: PHPUnit isolated 10,
+sidecar pytest **222**, Jest picker **25**. Manual M1–M5 not run this session.
+
+**PRD 08 brief narrative synthesis (2026-07-23):** `route=brief` runs
+`verify → synthesize → emit` — Haiku writes a labeled unverified narrative
+(`Chart summary — verify sources below.`) from verified fact texts only;
+verified claim lines + Source controls remain below. Segment kind `summary`
+in SSE + Ask Co-Pilot UI. Labs/meds unchanged.
+
+**PRD 08 guard fix (2026-07-23):** Rich pid-6 briefs were silently list-only
+(no `kind:summary`) because `guard_summary` rejected Haiku output post-LLM.
+Symptoms: sidecar log `Brief synthesis guard failed`; UI showed only cited claim
+lines; no SSE error (by design). Root causes (two passes):
+1. **Closed English allowlist** — any summary word not in verified facts +
+   stopwords/glue failed the guard; Haiku paraphrase always invents ordinary
+   English (`labs`, `laboratory`, `current`, etc.).
+2. **Date reformat numeric trap** — verified facts had `Jan 18, 2026`; Haiku
+   wrote `18-01-2026`; substring check rejected token `01` as novel numeric
+   (`reason=novel_numeric rejected_numerics=['01']`).
+Fix in `sidecar/app/nodes/synthesize.py`:
+- **Hard guard:** novel numeric values + runaway length (>1200) only.
+- **Date-aware grounding:** day/month/year components from verified ISO or
+  spelled-out dates allowed in any zero-padded form; float-equal values match.
+- **Vocabulary:** logged via `novel_tokens` for observability — **not** a hard
+  fail (PRD 08 §4 step 4 is optional).
+- **Logging:** diagnostics in message body (`reason`, `rejected_numerics`,
+  `novel_tokens`, `summary_preview`) — uvicorn default formatter ignores
+  `logger.extra`.
+Live pid-6 `/v1/chat` brief confirmed `segment_kinds` starts with `summary`.
+Sidecar pytest **52** on guard/synthesis tests after fix. **Not yet on DO.**
+
 **Local demo QA + setup (2026-07-23):** Panther §0–§8 smoke **43/43 pass**
 (`tmp/qa-smoke-last-run.txt`); sidecar pytest **165/165** with
 `COPILOT_INTERNAL_SECRET=test-secret`. Fixes: citation registry +
@@ -28,7 +70,8 @@ today's `CoPilot Demo` appts (pids 6/2; pid 8 absent on DO). Module active;
 **Prior DO redeploy (2026-07-23):** commit `d08ea03` — sidecar rebuild,
 mounts OK, `/ready` 200, OpenRouter set, module re-enabled.
 
-**Next:** Public §12 browser smoke on DO; commit + push UX pass; demo video (A7).
+**Next:** Manual local M1–M5 (PRD 10 collapse + all-route summaries); commit PRD 10;
+redeploy to DO; demo video (A7).
 
 ## PRD 07 decisions (locked — implemented)
 
@@ -49,7 +92,7 @@ Canonical: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13).
 
 - **Link affordance:** Claim text plain + trailing **Source** control (not whole-claim underline).
 - **Layout:** Newline between claim segments; assembly/refusal/disclaimer/empty **unlinked**.
-- **Clinical SSE:** `{ text, segments[] }` — `kind: claim|assembly`; claims carry `citation_id` (`c1…n`).
+- **Clinical SSE:** `{ text, segments[] }` — `kind: claim|assembly|summary`; claims carry `citation_id` (`c1…n`); summary unlinked (PRD 08).
 - **Citation SSE:** One batch `{ citations: [...] }` **after** `clinical`, before `done` (always emit, even if empty).
 - **Client:** Buffer until clinical+citation (~2.5s timeout / `done` → plain `text`); DOM-only (`textContent` / createElement); no `innerHTML`/markdown.
 - **Popup:** Picker-style `#acp-cite` dialog; `{ source_type, title, retrieved_at?, excerpt, locator (+ fhir_uuid?) }`; mutual exclusion with picker; focus returns to Source.
@@ -148,7 +191,7 @@ Canonical: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13).
 
 - First-class **Ask Co-Pilot** tab; empty chat start; concise; omit > guess
 - Unbound → **blocking schedule picker popup**; Change patient clears thread after confirm
-- **Citations (PRD 06 coded):** trailing Source → in-pane popup; allowlisted Open label; claim newlines
+- **Citations (PRD 06 coded):** trailing Source → in-pane popup; allowlisted Open label; claim newlines; brief adds labeled narrative summary block (PRD 08)
 
 ### Demo / agent decision policy (2026-07-21)
 
@@ -162,19 +205,30 @@ Canonical: `docs/PRDs/06-citations-hybrid-sse.md` (H1–H13).
 ### Physician UX defaults (decision guide §6)
 
 - **~90s budget:** rich brief shape for post-cache; accept uncached latency now
+- **UC-1 brief shape:** labeled narrative paragraph + cited fact lines below, sources collapsed by default (PRD 08 + PRD 10)
+- **UC-2/UC-3:** same narrative-first + collapsed audit shape on labs/meds when verified > 0 (PRD 10)
 - **Partial tool failure:** verified domains + `… unavailable — try again.`
 - **Empty domains:** explicit one-liners
 - **Citations:** every verified claim linked (PRD 06); conflict UX deferred
 - **Progress:** clinical-ish (`Pulling labs…` / `Looking up label information…`)
 - **UC-3:** one label-backed dosing path (PRD 05)
 
+## PRD 09 decisions (locked — implemented 2026-07-23)
+
+Canonical: `docs/PRDs/09-brief-prefetch-cache.md`.
+
+- **Trigger:** After successful `loadSchedule()`; again after auto-brief stream completes.
+- **Prefetch set:** Server-computed top 3 unique pids in picker display order (`SchedulePrefetchSelector`).
+- **Auth:** Schedule membership + `patients/demo`; prefetch correlation binds separate from interactive session bind.
+- **Cache:** Sidecar in-memory full emit payload post-verify (+ synthesize when present); key `(user_id, pid, schema_version)`; TTL 30m / soft 10m.
+- **Serve:** Auto-brief message + empty-ish transcript only; replay PRD 06 SSE contract; log `cached_serve`.
+- **Worker:** Sequential, max 1 active; defer while `/v1/chat` active; prefetch skips route LLM (`prefetch=true`, `route=brief`).
+
 ## Deferred (explicit in ARCHITECTURE.md)
 
-Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · interaction APIs · SMART runtime · FHIR dual path · production hardening · full eval catalog · **label conflict UX** (deferred from PRD 05)
+Exact tool schemas · multi-worker scale · interaction APIs · SMART runtime · FHIR dual path · production hardening · full eval catalog · **label conflict UX** (deferred from PRD 05)
 
 ## Deferred debt (shortcuts)
-
-- **Brief four-tool bundle not cached yet** (planned TTL ~30–60s).
 - **Synthea notes empty** — honest empty; optional seed later.
 - **Draft parse under rich tools:** watch `draft_parse_failed`; truncate oldest labs if needed.
 - **`fhir_uuid` / `retrieved_at` on citations** — populated when present (chart UUID + research stamp); UI renders both.
@@ -197,8 +251,8 @@ Exact tool schemas · auto-brief · pre-ask caching · multi-worker scale · int
 
 ## Remaining / next
 
-1. Manual local demo script (`docs/local-demo-success-criteria.md` §12) + §9 pytest/PHPUnit
-2. Redeploy remediation + `scripts/copilot/` seeds to DO
+1. Manual local demo script (`docs/local-demo-success-criteria.md` §12) + §9 pytest/PHPUnit — include pid-6 brief **with summary block**
+2. Redeploy remediation + PRD 08 guard fix + `scripts/copilot/` seeds to DO
 3. Optional Ask Co-Pilot Source popup click-path smoke on DO
 4. Optional fuller PRD 05 UI smoke; demo video + interview narrative polish
 5. Optional enable LangSmith keys on DO for redacted-trace screenshot

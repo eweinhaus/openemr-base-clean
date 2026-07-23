@@ -344,9 +344,11 @@ def build_clinical_payload(
     tool_domain_errors: dict[str, str] | None = None,
     requested_tools: list[str] | None = None,
     message: str = "",
+    turn_summary: str | None = None,
 ) -> dict[str, Any]:
-    """Build flat clinical ``text`` plus ordered ``segments`` (PRD 06).
+    """Build flat clinical ``text`` plus ordered ``segments`` (PRD 06 + 08/10).
 
+    Optional ``turn_summary`` prepends ``kind: summary`` (no ``citation_id``).
     Claim segments carry ``citation_id`` (``c1``…``cN``). Assembly / refusal /
     disclaimer / empty-domain / ``EMPTY_CLINICAL`` lines are ``kind: assembly``
     without ``citation_id`` (H1–H2, H9).
@@ -361,6 +363,9 @@ def build_clinical_payload(
     )
 
     segments: list[dict[str, Any]] = []
+    summary_text = turn_summary.strip() if isinstance(turn_summary, str) else ""
+    if summary_text:
+        segments.append({"kind": "summary", "text": summary_text})
     for index, claim in enumerate(verified, start=1):
         segments.append(
             {
@@ -375,7 +380,11 @@ def build_clinical_payload(
     if not segments:
         segments = [{"kind": "assembly", "text": EMPTY_CLINICAL_MESSAGE}]
 
-    text_parts = [claim.text for claim in verified] + assembly_lines
+    text_parts: list[str] = []
+    if summary_text:
+        text_parts.append(summary_text)
+    text_parts.extend([claim.text for claim in verified])
+    text_parts.extend(assembly_lines)
     if not text_parts:
         text_parts = [EMPTY_CLINICAL_MESSAGE]
 

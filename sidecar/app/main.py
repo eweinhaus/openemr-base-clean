@@ -30,6 +30,9 @@ DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 DEFAULT_LANGSMITH_PROJECT = "openemr-copilot-demo"
 DEFAULT_READY_CACHE_TTL_SECONDS = 30.0
+DEFAULT_BRIEF_CACHE_TTL_SECONDS = 1800.0
+DEFAULT_BRIEF_CACHE_SOFT_REFRESH_SECONDS = 600.0
+DEFAULT_BRIEF_CACHE_SCHEMA_VERSION = 1
 
 # Process-local readiness cache for /v1/chat (ops /ready always probes fresh).
 _ready_cache_body: Dict[str, Any] | None = None
@@ -50,6 +53,9 @@ class Settings:
     langsmith_api_key: str
     langsmith_tracing: bool
     langsmith_project: str
+    brief_cache_ttl_seconds: float
+    brief_cache_soft_refresh_seconds: float
+    brief_cache_schema_version: int
 
 
 def load_settings() -> Settings:
@@ -86,6 +92,24 @@ def load_settings() -> Settings:
         langsmith_project=os.environ.get(
             "LANGSMITH_PROJECT", DEFAULT_LANGSMITH_PROJECT
         ),
+        brief_cache_ttl_seconds=float(
+            os.environ.get(
+                "COPILOT_BRIEF_CACHE_TTL_SECONDS",
+                str(DEFAULT_BRIEF_CACHE_TTL_SECONDS),
+            )
+        ),
+        brief_cache_soft_refresh_seconds=float(
+            os.environ.get(
+                "COPILOT_BRIEF_CACHE_SOFT_REFRESH_SECONDS",
+                str(DEFAULT_BRIEF_CACHE_SOFT_REFRESH_SECONDS),
+            )
+        ),
+        brief_cache_schema_version=int(
+            os.environ.get(
+                "COPILOT_BRIEF_CACHE_SCHEMA_VERSION",
+                str(DEFAULT_BRIEF_CACHE_SCHEMA_VERSION),
+            )
+        ),
     )
 
 
@@ -96,6 +120,14 @@ class ChatRequest(BaseModel):
     pid: Optional[int] = None
     message: str = ""
     transcript: List[Any] = Field(default_factory=list)
+
+
+class PrefetchBriefRequest(BaseModel):
+    user_id: int
+    username: str = ""
+    pid: int
+    correlation_id: str = ""
+    prefetch: bool = True
 
 
 def _require_secret_at_startup() -> None:
@@ -228,21 +260,27 @@ def _chat_event_iterator(
     message: str,
     transcript: List[Any],
 ) -> Iterator[str]:
-    gateway = GatewayClient(
-        secret=settings.internal_secret,
-        tool_url=settings.gateway_tool_url,
-        timeout=settings.tool_timeout_seconds,
-        disclosure_url=settings.gateway_disclosure_url,
-    )
-    for event_name, payload in iter_chat_events(
-        gateway=gateway,
-        correlation_id=correlation_id,
-        pid=pid,
-        user_id=user_id,
-        message=message,
-        transcript=transcript,
-    ):
-        yield format_sse(event_name, payload)
+    from .prefetch import decrement_chat_active, increment_chat_active
+
+    increment_chat_active()
+    try:
+        gateway = GatewayClient(
+            secret=settings.internal_secret,
+            tool_url=settings.gateway_tool_url,
+            timeout=settings.tool_timeout_seconds,
+            disclosure_url=settings.gateway_disclosure_url,
+        )
+        for event_name, payload in iter_chat_events(
+            gateway=gateway,
+            correlation_id=correlation_id,
+            pid=pid,
+            user_id=user_id,
+            message=message,
+            transcript=transcript,
+        ):
+            yield format_sse(event_name, payload)
+    finally:
+        decrement_chat_active()
 
 
 def _unready_event_iterator(*, correlation_id: str) -> Iterator[str]:
@@ -308,3 +346,29 @@ async def chat(
             "Connection": "close",
         },
     )
+
+
+@app.post("/v1/prefetch-brief")
+async def prefetch_brief(
+    request: Request,
+    body: PrefetchBriefRequest,
+    x_copilot_internal_secret: Optional[str] = Header(default=None),
+) -> JSONResponse:
+    settings = get_settings()
+    provided_secret = x_copilot_internal_secret or request.headers.get(SECRET_HEADER)
+    if not verify_secret(provided_secret, settings.internal_secret):
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    readiness = await get_readiness(settings, force_refresh=False)
+    if not readiness.get("ready"):
+        return JSONResponse(status_code=200, content={"ok": False, "error": "unready"})
+
+    from .prefetch import enqueue_prefetch
+
+    queued = enqueue_prefetch(
+        user_id=body.user_id,
+        username=body.username,
+        pid=body.pid,
+        correlation_id=body.correlation_id,
+    )
+    return JSONResponse(status_code=200, content={"ok": True, "queued": queued})
