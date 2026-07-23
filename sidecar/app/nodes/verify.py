@@ -10,11 +10,12 @@ from ..claims import (
     Refusal,
     apply_allergy_contradiction,
     build_tool_fact_map,
+    fallback_verified_claims_for_prescribing,
     filter_refusals,
     verify_claims,
 )
 from ..gateway_client import GatewayClient
-from ..research import RESEARCH_TABLES, is_dosing_like
+from ..research import RESEARCH_TABLES, is_dosing_like, is_prescribing_recommendation_like
 from ..state import ALLERGY_CONTRADICTION_REFUSAL, DOSING_REFUSAL, GraphState
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,19 @@ def _run_verify(
 
     verified, allergy_hit = apply_allergy_contradiction(verified, tool_results)
 
+    message = state.get("message", "")
+    if is_prescribing_recommendation_like(message) and not verified:
+        fallback = fallback_verified_claims_for_prescribing(tool_results)
+        if fallback:
+            logger.info(
+                "Prescribing-scope fallback injected chart facts",
+                extra={
+                    "correlation_id": correlation_id,
+                    "fallback_count": len(fallback),
+                },
+            )
+            verified = fallback
+
     refusals = filter_refusals(
         list(draft.refusals),
         canonical=_CANONICAL_REFUSALS,
@@ -90,7 +104,6 @@ def _run_verify(
         refusals.append(ALLERGY_CONTRADICTION_REFUSAL)
 
     # H1: append no_research only when dosing-like AND no verified research dosing fact.
-    message = state.get("message", "")
     if is_dosing_like(message) and not _has_verified_research_dosing(verified):
         if not any(r.code == DOSING_REFUSAL.code for r in refusals):
             refusals.append(DOSING_REFUSAL)

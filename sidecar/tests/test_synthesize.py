@@ -9,16 +9,12 @@ import pytest
 
 from sidecar.app.llm import LlmError
 from sidecar.app.nodes.synthesize import (
-    SUMMARY_LABEL,
     build_domain_context_for_synthesis,
     diagnose_guard_summary,
     guard_summary,
     rejected_summary_tokens,
     synthesize_node,
 )
-
-LABS_SUMMARY_LABEL = "Lab summary — verify sources below."
-MEDS_SUMMARY_LABEL = "Medication summary — verify sources below."
 
 
 def test_guard_summary_passes_when_summary_only_uses_verified_numbers() -> None:
@@ -193,8 +189,8 @@ def test_synthesize_node_sets_turn_summary_on_mocked_brief_success(
     )
 
     assert "turn_summary" in result
-    assert result["turn_summary"].startswith(SUMMARY_LABEL)
-    assert "Patient presents for follow-up" in result["turn_summary"]
+    assert result["turn_summary"].startswith("Patient presents for follow-up")
+    assert "Last visit was 2024-03-01" in result["turn_summary"]
 
 
 def test_synthesize_node_runs_for_labs_route(
@@ -228,7 +224,7 @@ def test_synthesize_node_runs_for_labs_route(
     )
 
     assert "turn_summary" in result
-    assert result["turn_summary"].startswith(LABS_SUMMARY_LABEL)
+    assert result["turn_summary"].startswith("Recent laboratory results")
     assert "creatinine 1.4 mg/dL" in result["turn_summary"]
 
 
@@ -262,7 +258,7 @@ def test_synthesize_node_runs_for_meds_route(
     )
 
     assert "turn_summary" in result
-    assert result["turn_summary"].startswith(MEDS_SUMMARY_LABEL)
+    assert result["turn_summary"].startswith("Active medications include simvastatin")
     assert "simvastatin 20 MG" in result["turn_summary"]
 
 

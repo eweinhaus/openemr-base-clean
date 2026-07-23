@@ -792,7 +792,7 @@
             }
         }
 
-        if (claims.length > 0 || panelAssemblies.length > 0) {
+        if (claims.length > 0) {
             var toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.className =
@@ -825,6 +825,8 @@
 
             bubble.appendChild(toggle);
             bubble.appendChild(panel);
+        } else {
+            assemblies = panelAssemblies.concat(assemblies);
         }
 
         for (var k = 0; k < assemblies.length; k++) {

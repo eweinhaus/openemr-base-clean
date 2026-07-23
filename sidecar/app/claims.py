@@ -9,12 +9,13 @@ from typing import Any
 
 from .research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
+    PRESCRIBING_RECOMMENDATION_SCOPE,
     RESEARCH_TABLES,
     RESEARCH_TOOL_NAME,
     UNCERTAIN_RXNORM_SUFFIX,
     format_not_on_list,
 )
-from .research.dosing import is_dosing_like
+from .research.dosing import is_dosing_like, is_prescribing_recommendation_like
 from .research.resolve import ResolveStatus, resolve_drug_query
 from .research.extract import derive_research_title_and_url
 
@@ -262,6 +263,40 @@ def build_tool_index(tool_results: list[dict[str, Any]]) -> set[tuple[str, str]]
     return set(build_tool_fact_map(tool_results).keys())
 
 
+def fallback_verified_claims_for_prescribing(
+    tool_results: list[dict[str, Any]],
+) -> list[Claim]:
+    """Surface chart Rx/allergy facts when draft verify yields nothing.
+
+    Prescribing-recommendation questions often produce zero draft claims (the
+    model tries to suggest new drugs). Inject deterministic chart facts so the
+    physician still sees current meds with Source controls and a narrative summary.
+    """
+    fact_map = build_tool_fact_map(tool_results)
+    verified: list[Claim] = []
+    for (table, fact_id), fact in fact_map.items():
+        if table == "prescriptions":
+            pass
+        elif table == "lists":
+            text = fact.get("text", "")
+            if not isinstance(text, str) or not text.startswith(_ALLERGY_PREFIX):
+                continue
+        else:
+            continue
+        fact_text = fact.get("text", "").strip()
+        if not fact_text:
+            continue
+        verified.append(
+            Claim(
+                text=fact_text,
+                source_type="chart",
+                locator=Locator(table=table, id=fact_id),
+                excerpt=fact.get("excerpt"),
+            )
+        )
+    return verified
+
+
 def verify_claims(
     draft: DraftClaims,
     fact_map: dict[tuple[str, str], dict[str, str]],
@@ -479,8 +514,12 @@ def _assembly_lines(
     parts: list[str] = []
     parts.extend(uncertain_lines)
     parts.extend(not_on_list_lines)
-    if _should_include_disclaimer(tool_results, refusals):
+    if _should_include_disclaimer(tool_results, refusals) or is_prescribing_recommendation_like(
+        message
+    ):
         parts.append(DECISION_SUPPORT_DISCLAIMER)
+    if is_prescribing_recommendation_like(message):
+        parts.append(PRESCRIBING_RECOMMENDATION_SCOPE)
     parts.extend(refusal_texts)
     parts.extend(domain_lines)
     return parts

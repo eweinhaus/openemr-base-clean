@@ -13,6 +13,7 @@ from .constants import (
     HTTP_MAX_RESPONSE_BYTES,
     NOT_ON_LIST_TEMPLATE,
     OPENFDA_LABEL_URL,
+    PRESCRIBING_RECOMMENDATION_SCOPE,
     RESEARCH_PROGRESS_MESSAGE,
     RESEARCH_TABLES,
     RESEARCH_TOOL_NAME,
@@ -23,7 +24,7 @@ from .constants import (
     UNCERTAIN_RXNORM_SUFFIX,
     format_not_on_list,
 )
-from .dosing import is_dosing_like
+from .dosing import is_dosing_like, is_prescribing_recommendation_like
 from .extract import (
     build_research_tool_result,
     extract_dailymed_facts,
@@ -50,6 +51,7 @@ __all__ = [
     "LabelFetchResult",
     "NOT_ON_LIST_TEMPLATE",
     "OPENFDA_LABEL_URL",
+    "PRESCRIBING_RECOMMENDATION_SCOPE",
     "RESEARCH_PROGRESS_MESSAGE",
     "RESEARCH_TABLES",
     "RESEARCH_TOOL_NAME",
@@ -66,6 +68,7 @@ __all__ = [
     "fetch_label",
     "format_not_on_list",
     "is_dosing_like",
+    "is_prescribing_recommendation_like",
     "reconcile_on_chart_after_hit",
     "resolve_drug_query",
     "scrub_query_term",

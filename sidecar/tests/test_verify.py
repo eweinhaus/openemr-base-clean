@@ -837,3 +837,36 @@ def test_verify_node_allergy_contradiction_drops_research() -> None:
     )
     # Allergy chart fact itself may still verify.
     assert any(c.locator.table == "lists" for c in out["verified_claims"])
+
+
+def test_verify_prescribing_recommendation_injects_fallback_chart_facts() -> None:
+    from sidecar.app.nodes.verify import verify_node
+
+    message = "Are there any new medications I should consider prescribing?"
+    state = {
+        "message": message,
+        "correlation_id": "prescribe-fallback-1",
+        "draft_claims": DraftClaims(claims=[], refusals=[]),
+        "tool_results": [
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Simvastatin 20 MG Oral Tablet",
+                            "table": "prescriptions",
+                            "id": "201",
+                        }
+                    ],
+                    "meta": {"active_med_count": 1, "allergy_count": 0},
+                },
+            }
+        ],
+    }
+
+    out = verify_node(state)
+    verified = out["verified_claims"]
+    assert len(verified) == 1
+    assert verified[0].text == "Simvastatin 20 MG Oral Tablet"
+    assert verified[0].locator.table == "prescriptions"

@@ -13,6 +13,11 @@ DECISION_SUPPORT_DISCLAIMER = (
     "or write the chart."
 )
 
+PRESCRIBING_RECOMMENDATION_SCOPE = (
+    "I can't recommend new prescriptions from the chart alone — decision "
+    "support only; review current medications when listed below."
+)
+
 # Exact chart-fact suffix for missing RxNorm (leading space required).
 UNCERTAIN_RXNORM_SUFFIX = " (RxNorm not on file — drug identity uncertain)"
 

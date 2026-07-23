@@ -62,14 +62,11 @@ LABS_DRAFT_ADDENDUM = (
 
 MEDS_DRAFT_ADDENDUM = (
     "For lists include active Rx and allergies; for dosing include research_label "
-    "locators when present; never claim off-chart drugs as patient Rx."
+    "locators when present; never claim off-chart drugs as patient Rx. "
+    "For add/prescribe/recommendation questions: still include verified active Rx "
+    "and allergy facts from tool results; do not invent new drug recommendations "
+    "as chart claims."
 )
-
-ROUTE_SUMMARY_LABELS: dict[Route, str] = {
-    "brief": "Chart summary — verify sources below.",
-    "labs": "Lab summary — verify sources below.",
-    "meds": "Medication summary — verify sources below.",
-}
 
 SYNTHESIZE_SYSTEM_PROMPT = (
     "Write a short professional clinical pre-visit summary as JSON only. "
@@ -100,6 +97,9 @@ SYNTHESIZE_MEDS_SYSTEM_PROMPT = (
     'Use this exact shape: {"summary":"..."}. '
     "For medication list questions: prose summary of active medications; "
     "mention verified allergies or conditions when present in verified facts. "
+    "For add/prescribe/recommendation questions: state that new prescriptions "
+    "cannot be recommended from the chart alone; summarize verified current "
+    "medications and relevant allergies/conditions only. "
     "For dosing questions: paraphrase only verified chart and research dose facts; "
     "do not invent dosing. Never replace or duplicate decision-support disclaimers, "
     "not-on-list lines, or refusal copy — those appear separately in assembly. "

@@ -10,9 +10,9 @@ from sidecar.app.claims import (
     build_citation_records,
     build_clinical_payload,
 )
-from sidecar.app.nodes.synthesize import SUMMARY_LABEL
 from sidecar.app.research.constants import (
     DECISION_SUPPORT_DISCLAIMER,
+    PRESCRIBING_RECOMMENDATION_SCOPE,
     RESEARCH_TOOL_NAME,
     UNCERTAIN_RXNORM_SUFFIX,
     format_not_on_list,
@@ -75,7 +75,6 @@ def test_build_clinical_payload_with_turn_summary_prepends_summary_segment() -> 
         _claim("Creatinine 1.4 mg/dL", fact_id="42"),
     ]
     turn_summary = (
-        f"{SUMMARY_LABEL}\n\n"
         "Patient presents for follow-up. Last visit was 2024-03-01."
     )
 
@@ -90,13 +89,13 @@ def test_build_clinical_payload_with_turn_summary_prepends_summary_segment() -> 
     assert payload["segments"][1]["citation_id"] == "c1"
     assert payload["segments"][2]["kind"] == "claim"
     assert payload["segments"][2]["citation_id"] == "c2"
-    assert payload["text"].startswith(SUMMARY_LABEL)
+    assert payload["text"].startswith("Patient presents for follow-up.")
     assert "Last visit 2024-03-01 — follow-up" in payload["text"]
 
 
 def test_build_clinical_payload_summary_claims_assembly_order() -> None:
     verified = [_claim("Creatinine 1.4 mg/dL")]
-    turn_summary = f"{SUMMARY_LABEL}\n\nPatient presents for lab review."
+    turn_summary = "Patient presents for lab review."
     payload = build_clinical_payload(
         verified,
         [],
@@ -460,3 +459,69 @@ def test_assemble_clinical_matches_payload_text() -> None:
     disclaimer_pos = text.index(DECISION_SUPPORT_DISCLAIMER)
     refusal_pos = text.index(DOSING_REFUSAL_TEXT)
     assert claim_pos < metformin_pos < disclaimer_pos < refusal_pos
+
+
+def test_prescribing_recommendation_assembly_includes_scope_and_disclaimer() -> None:
+    message = "Are there any new medications I should consider prescribing?"
+    payload = build_clinical_payload(
+        [],
+        [],
+        tool_results=[
+            {
+                "ok": True,
+                "tool": "meds",
+                "data": {
+                    "facts": [
+                        {
+                            "text": "Simvastatin 20 MG Oral Tablet",
+                            "table": "prescriptions",
+                            "id": "201",
+                        }
+                    ],
+                    "meta": {"active_med_count": 1, "allergy_count": 0},
+                },
+            }
+        ],
+        requested_tools=["meds"],
+        message=message,
+    )
+    assembly_texts = [
+        s["text"] for s in payload["segments"] if s["kind"] == "assembly"
+    ]
+    assert PRESCRIBING_RECOMMENDATION_SCOPE in assembly_texts
+    assert DECISION_SUPPORT_DISCLAIMER in assembly_texts
+
+
+def test_fallback_verified_claims_for_prescribing_injects_rx_and_allergy() -> None:
+    from sidecar.app.claims import fallback_verified_claims_for_prescribing
+
+    tool_results = [
+        {
+            "ok": True,
+            "tool": "meds",
+            "data": {
+                "facts": [
+                    {
+                        "text": "Simvastatin 20 MG Oral Tablet",
+                        "table": "prescriptions",
+                        "id": "201",
+                    },
+                    {
+                        "text": "Allergy: Penicillin — rash",
+                        "table": "lists",
+                        "id": "9",
+                    },
+                    {
+                        "text": "Hypertension",
+                        "table": "lists",
+                        "id": "10",
+                    },
+                ],
+            },
+        }
+    ]
+    claims = fallback_verified_claims_for_prescribing(tool_results)
+    texts = [c.text for c in claims]
+    assert "Simvastatin 20 MG Oral Tablet" in texts
+    assert "Allergy: Penicillin — rash" in texts
+    assert "Hypertension" not in texts

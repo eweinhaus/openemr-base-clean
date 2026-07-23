@@ -70,8 +70,13 @@ today's `CoPilot Demo` appts (pids 6/2; pid 8 absent on DO). Module active;
 **Prior DO redeploy (2026-07-23):** commit `d08ea03` — sidecar rebuild,
 mounts OK, `/ready` 200, OpenRouter set, module re-enabled.
 
-**Next:** Manual local M1–M5 (PRD 10 collapse + all-route summaries); commit PRD 10;
-redeploy to DO; demo video (A7).
+**DO redeploy PRD 09+10 (2026-07-23):** commit `fcb92d8` on
+https://142.93.255.212/ — overlay+sidecar rebuild; `bind.php`/`prefetch.php` +
+`PrefetchBriefService` mounts OK; sidecar healthy; `/ready` true; OpenRouter set;
+module re-enabled; login HTTP 200. Browser MCP cannot reach DO from dev env —
+automated SSH smoke only this session.
+
+**Next:** Manual PRD 10 smoke M1–M5 local + DO browser (§12); demo video (A7).
 
 ## PRD 07 decisions (locked — implemented)
 

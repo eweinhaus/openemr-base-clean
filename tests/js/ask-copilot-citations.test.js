@@ -357,8 +357,7 @@ describe('renderAssistantTurn', () => {
         const app = loadApp();
         await flush();
 
-        const summaryText =
-            'Chart summary — verify sources below.\n\nPatient presents for follow-up.';
+        const summaryText = 'Patient presents for follow-up.';
         app.renderAssistantTurn(
             [
                 { kind: 'summary', text: summaryText },
@@ -378,7 +377,7 @@ describe('renderAssistantTurn', () => {
         const summaryEl = el('acp-messages').querySelector('.ask-copilot-segment-summary');
         expect(summaryEl).not.toBeNull();
         expect(summaryEl.querySelector('.ask-copilot-source')).toBeNull();
-        expect(summaryEl.textContent).toContain('Chart summary — verify sources below.');
+        expect(summaryEl.textContent).toContain('Patient presents for follow-up.');
         expect(el('acp-messages').querySelectorAll('.ask-copilot-source')).toHaveLength(1);
     });
 });
@@ -388,8 +387,7 @@ describe('renderAssistantTurn', () => {
 // ---------------------------------------------------------------------------
 describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
 
-    const BRIEF_SUMMARY =
-        'Chart summary — verify sources below.\n\nPatient presents for follow-up.';
+    const BRIEF_SUMMARY = 'Patient presents for follow-up.';
 
     /** summary + two claims + assembly — typical synthesized turn shape. */
     const MIXED_SEGMENTS = [
@@ -445,7 +443,7 @@ describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
 
         const summaryEl = bubble.querySelector('.ask-copilot-segment-summary');
         expect(summaryEl).not.toBeNull();
-        expect(summaryEl.textContent).toContain('Chart summary — verify sources below.');
+        expect(summaryEl.textContent).toContain('Patient presents for follow-up.');
         expect(summaryEl.closest('.ask-copilot-sources-panel')).toBeNull();
 
         const assemblySeg = Array.from(bubble.querySelectorAll('.ask-copilot-segment')).find(
@@ -539,6 +537,29 @@ describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
         expect(panel.querySelectorAll('.ask-copilot-source')).toHaveLength(1);
     });
 
+    test('assembly-only turn with zero claims does not show sources toggle', async () => {
+        const app = loadApp();
+        await flush();
+
+        const segments = [
+            {
+                kind: 'assembly',
+                text: "I can't recommend new prescriptions from the chart alone — decision support only; review current medications when listed below."
+            },
+            { kind: 'assembly', text: 'No allergies on file.' },
+            { kind: 'assembly', text: 'Decision support only — physician decides.' }
+        ];
+
+        app.renderAssistantTurn(segments, {});
+
+        const bubble = assistantBubble();
+        expect(bubble).not.toBeNull();
+        expect(sourcesToggle(bubble)).toBeNull();
+        expect(sourcesPanel(bubble)).toBeNull();
+        expect(bubble.textContent).toContain("I can't recommend new prescriptions");
+        expect(bubble.textContent).toContain('No allergies on file.');
+    });
+
     test('empty allergy and notes assembly lines render inside collapsed panel', async () => {
         const app = loadApp();
         await flush();
@@ -591,7 +612,7 @@ describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
         await flush();
 
         const segments = [
-            { kind: 'summary', text: 'Medication summary — verify sources below.\n\nOn statin therapy.' },
+            { kind: 'summary', text: 'On statin therapy.' },
             { kind: 'claim', text: 'On simvastatin 20 mg', citation_id: 'c2' },
             { kind: 'assembly', text: 'Not medical advice.' },
             { kind: 'assembly', text: 'Dosing guidance is informational only; confirm against chart.' }
@@ -604,7 +625,7 @@ describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
         expect(panel).not.toBeNull();
         expect(panel.hidden).toBe(true);
 
-        expect(bubble.textContent).toContain('Medication summary — verify sources below.');
+        expect(bubble.textContent).toContain('On statin therapy.');
         expect(bubble.textContent).toContain('Not medical advice.');
         expect(bubble.textContent).toContain(
             'Dosing guidance is informational only; confirm against chart.'

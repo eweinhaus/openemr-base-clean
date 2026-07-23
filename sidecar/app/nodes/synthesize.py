@@ -10,7 +10,6 @@ from typing import Any
 from ..claims import ClaimsParseError, _load_json_object, build_domain_status_lines
 from ..llm import (
     LlmError,
-    ROUTE_SUMMARY_LABELS,
     set_correlation_id,
     synthesize_turn_raw,
 )
@@ -19,8 +18,6 @@ from ..progress import PROGRESS_SUMMARIZING
 from ..state import GraphState
 
 logger = logging.getLogger(__name__)
-
-SUMMARY_LABEL = ROUTE_SUMMARY_LABELS["brief"]
 
 # Function / narrative words ignored when listing novel vocab for diagnostics.
 # Word-vocabulary is NOT a hard guard (PRD 08 §4 step 4 is optional); Haiku
@@ -522,7 +519,6 @@ def synthesize_node(state: GraphState) -> dict[str, object]:
         return {}
 
     route = state.get("route", "brief")
-    label = ROUTE_SUMMARY_LABELS.get(route, SUMMARY_LABEL)
 
     verified_facts = [
         {"text": claim.text, "source_type": claim.source_type} for claim in verified
@@ -597,8 +593,7 @@ def synthesize_node(state: GraphState) -> dict[str, object]:
         )
         return {}
 
-    turn_summary = f"{label}\n\n{summary}"
     return {
         "progress_messages": [PROGRESS_SUMMARIZING],
-        "turn_summary": turn_summary,
+        "turn_summary": summary,
     }

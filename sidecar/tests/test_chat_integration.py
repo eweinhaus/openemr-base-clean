@@ -24,7 +24,6 @@ from sidecar.app.errors import (
 )
 from sidecar.app.llm import AUTO_BRIEF_MESSAGE, LlmError
 from sidecar.app.main import app
-from sidecar.app.nodes.synthesize import SUMMARY_LABEL
 from sidecar.app.research.constants import DECISION_SUPPORT_DISCLAIMER
 from sidecar.app.state import (
     DOSING_REFUSAL,
@@ -34,10 +33,7 @@ from sidecar.app.state import (
 TEST_SECRET = os.environ["COPILOT_INTERNAL_SECRET"]
 DOSING_REFUSAL_TEXT = DOSING_REFUSAL.text
 
-# PRD 10 route-specific summary labels (brief keeps SUMMARY_LABEL from synthesize).
-LABS_SUMMARY_LABEL = "Lab summary — verify sources below."
-MEDS_SUMMARY_LABEL = "Medication summary — verify sources below."
-
+# Mock synthesis payloads for route integration tests.
 _MOCK_LABS_SYNTHESIS = json.dumps(
     {"summary": "Creatinine is within reference range on the recent CMP."}
 )
@@ -565,10 +561,10 @@ def test_brief_route_emits_summary_and_claim_segments(
     summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
     claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
     assert len(summary_segs) == 1
-    assert summary_segs[0]["text"].startswith(SUMMARY_LABEL)
+    assert summary_segs[0]["text"].startswith("Patient presents for follow-up")
     assert "citation_id" not in summary_segs[0]
     assert len(claim_segs) >= 2
-    assert clinical["text"].startswith(SUMMARY_LABEL)
+    assert clinical["text"].startswith("Patient presents for follow-up")
     assert len(citation["citations"]) == len(claim_segs)
 
 
@@ -597,10 +593,10 @@ def test_labs_route_emits_summary_segment_first(
     claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
     assert len(summary_segs) == 1
     assert clinical["segments"][0]["kind"] == "summary"
-    assert summary_segs[0]["text"].startswith(LABS_SUMMARY_LABEL)
+    assert summary_segs[0]["text"].startswith("Creatinine is within reference range")
     assert "citation_id" not in summary_segs[0]
     assert claim_segs
-    assert clinical["text"].startswith(LABS_SUMMARY_LABEL)
+    assert clinical["text"].startswith("Creatinine is within reference range")
     assert any("Summarizing" in p for p in progress)
 
 
@@ -632,11 +628,11 @@ def test_meds_list_route_emits_summary_segment_first(
     claim_segs = [s for s in clinical["segments"] if s.get("kind") == "claim"]
     assert len(summary_segs) == 1
     assert clinical["segments"][0]["kind"] == "summary"
-    assert summary_segs[0]["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert summary_segs[0]["text"].startswith("Patient is on metformin")
     assert "citation_id" not in summary_segs[0]
     assert claim_segs
     assert "Metformin 500 mg" in clinical["text"]
-    assert clinical["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert clinical["text"].startswith("Patient is on metformin")
     assert DOSING_REFUSAL_TEXT not in clinical["text"]
     assert any("Summarizing" in p for p in progress)
 
@@ -716,7 +712,7 @@ def test_meds_dosing_route_emits_summary_research_and_disclaimer(
     assembly_segs = [s for s in clinical["segments"] if s.get("kind") == "assembly"]
     assert len(summary_segs) == 1
     assert clinical["segments"][0]["kind"] == "summary"
-    assert summary_segs[0]["text"].startswith(MEDS_SUMMARY_LABEL)
+    assert summary_segs[0]["text"].startswith("Metformin is typically started")
     assert claim_segs
     assert any("Usual adult dose is 500 mg twice daily" in s["text"] for s in claim_segs)
     assert any(

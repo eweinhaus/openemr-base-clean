@@ -71,6 +71,10 @@
   synthesize gate; `turn_summary` rename; labs/meds prompts + draft addenda;
   collapsed sources UI + CSS; `Summarizing…` progress; sidecar pytest **227**;
   Jest citations **19**; ai-decision-guide §6 updated.
+- [x] **DO redeploy PRD 09+10 (2026-07-23):** commit `fcb92d8` — prefetch cache +
+  all-route synthesis + collapsed sources UI; sidecar rebuild; mounts incl.
+  `bind.php`/`prefetch.php`/`PrefetchBriefService`; `/ready` true; OpenRouter set;
+  module active; SSH smoke OK (login 200, health, new PHP classes).
 - [ ] Manual PRD 10 smoke M1–M5 local (pid 6 brief/labs/meds + dosing disclaimer)
 - [ ] Public DO browser smoke (`docs/local-demo-success-criteria.md` §12 on 142.93.255.212)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
@@ -96,7 +100,7 @@
 - Docker Hub pull / `docker-credential-desktop` can hang locally — prefer build sidecar **on the droplet**
 - **Synthea `form_clinical_notes` empty** — notes domain honest empty; optional seed deferred
 - **Uncached four-tool brief** may be slow on cache miss; PRD 09 prefetch warms top-3 schedule pids; watch `draft_parse_failed` under richer tool JSON
-- **PRD 08 guard fix local only** — DO still on pre-fix sidecar until next redeploy; if brief is list-only on DO, rebuild sidecar with `synthesize.py` guard changes
+- **PRD 08 guard fix** — on DO after `fcb92d8` redeploy (2026-07-23); if brief is still list-only, check sidecar logs for `Brief synthesis guard failed`
 - **DO `OPENFDA_API_KEY` empty** — optional; unauthenticated openFDA worked for smoke
 - **PRD 06 on DO** — SSE citation path verified; Ask Co-Pilot Source click-path optional
 - **PRD 07 on DO** — soft langsmith field; verify disclosure join smoked; LangSmith API key not required for chat
