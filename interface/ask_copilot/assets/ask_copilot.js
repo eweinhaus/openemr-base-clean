@@ -13,6 +13,12 @@
     var strings = config.strings || {};
     var streaming = false;
     var boundPid = null;
+    /** @type {string|null} */
+    var boundPatientName = config.sessionPatientName || null;
+    /** pid → display name from the last schedule fetch */
+    var schedulePatientNames = {};
+    /** @type {HTMLElement|null} */
+    var typingBubbleEl = null;
     /** @type {Array<{role: string, text: string}>} */
     var transcript = [];
 
@@ -156,6 +162,7 @@
     function showGate(unbound, pid) {
         if (unbound) {
             boundPid = null;
+            boundPatientName = null;
         } else if (boundPid === null && pid) {
             boundPid = pid;
         }
@@ -177,8 +184,7 @@
 
         if (patientLineEl) {
             if (!unbound && pid) {
-                var prefix = strings.patientPrefix || 'Patient';
-                patientLineEl.textContent = prefix + ' #' + String(pid);
+                updatePatientLine(pid, boundPatientName);
             } else {
                 patientLineEl.textContent = '';
             }
@@ -215,9 +221,136 @@
         }
         var bubble = document.createElement('div');
         bubble.className = 'ask-copilot-bubble ask-copilot-bubble-' + role;
-        bubble.textContent = text == null ? '' : String(text);
+        var displayText = text == null ? '' : String(text);
+        if (role === 'assistant') {
+            displayText = humanizeIsoDatesInText(displayText);
+        }
+        bubble.textContent = displayText;
         messagesEl.appendChild(bubble);
         messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    /**
+     * Show a lightweight assistant "thinking" bubble while a reply streams.
+     */
+    function showTypingIndicator() {
+        removeTypingIndicator();
+        if (!messagesEl) {
+            return;
+        }
+        typingBubbleEl = document.createElement('div');
+        typingBubbleEl.className =
+            'ask-copilot-bubble ask-copilot-bubble-assistant ask-copilot-typing';
+        typingBubbleEl.setAttribute('aria-busy', 'true');
+        typingBubbleEl.textContent = strings.typing || '…';
+        messagesEl.appendChild(typingBubbleEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+        if (typingBubbleEl && typingBubbleEl.parentNode) {
+            typingBubbleEl.parentNode.removeChild(typingBubbleEl);
+        }
+        typingBubbleEl = null;
+    }
+
+    /**
+     * Resolve a human-readable patient name for the header line.
+     *
+     * @param {number} pid
+     * @param {string|null|undefined} knownName
+     * @returns {Promise<void>}
+     */
+    async function updatePatientLine(pid, knownName) {
+        if (!patientLineEl || !pid) {
+            if (patientLineEl) {
+                patientLineEl.textContent = '';
+            }
+            return;
+        }
+
+        var name =
+            knownName != null && String(knownName).trim() !== ''
+                ? String(knownName).trim()
+                : schedulePatientNames[pid] || null;
+
+        if (!name && config.patientUrl) {
+            name = await fetchPatientName(pid);
+        }
+
+        if (name) {
+            boundPatientName = name;
+            patientLineEl.textContent = name;
+            return;
+        }
+
+        var prefix = strings.patientPrefix || 'Patient';
+        patientLineEl.textContent = prefix + ' #' + String(pid);
+    }
+
+    /**
+     * Fetch display name for the session-bound patient (patient.php).
+     *
+     * @param {number} pid
+     * @returns {Promise<string|null>}
+     */
+    async function fetchPatientName(pid) {
+        if (!config.patientUrl || !Number.isFinite(pid) || pid <= 0) {
+            return null;
+        }
+
+        if (typeof top !== 'undefined' && typeof top.restoreSession === 'function') {
+            top.restoreSession();
+        }
+
+        var url =
+            config.patientUrl +
+            (config.patientUrl.indexOf('?') === -1 ? '?' : '&') +
+            'csrf_token_form=' +
+            encodeURIComponent(config.csrf || '');
+
+        try {
+            var response = await fetch(url, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' }
+            });
+            if (!response.ok) {
+                return null;
+            }
+            var data = await response.json();
+            if (
+                data &&
+                parseInt(data.pid, 10) === pid &&
+                data.name != null &&
+                String(data.name).trim() !== ''
+            ) {
+                return String(data.name).trim();
+            }
+        } catch (err) {
+            return null;
+        }
+
+        return null;
+    }
+
+    function cacheSchedulePatientNames(data) {
+        schedulePatientNames = {};
+        var appointments =
+            data && Array.isArray(data.appointments) ? data.appointments : [];
+        for (var i = 0; i < appointments.length; i++) {
+            var appt = appointments[i];
+            if (!appt || appt.pid == null) {
+                continue;
+            }
+            var apptPid = parseInt(appt.pid, 10);
+            if (!Number.isFinite(apptPid) || apptPid <= 0) {
+                continue;
+            }
+            if (appt.name != null && String(appt.name).trim() !== '') {
+                schedulePatientNames[apptPid] = String(appt.name).trim();
+            }
+        }
     }
 
     /**
@@ -314,6 +447,100 @@
     }
 
     /**
+     * NotebookLM-style citation number from citation_id (c1 → 1).
+     *
+     * @param {string|null|undefined} citeId
+     * @returns {string}
+     */
+    function citationDisplayNumber(citeId) {
+        if (citeId == null || String(citeId) === '') {
+            return '';
+        }
+        var match = String(citeId).match(/^c(\d+)$/i);
+        return match ? match[1] : String(citeId);
+    }
+
+    function friendlySourceType(sourceType) {
+        if (sourceType === 'chart') {
+            return strings.sourceChart || 'Patient chart';
+        }
+        if (sourceType === 'research') {
+            return strings.sourceResearch || 'Drug label';
+        }
+        if (sourceType === 'note') {
+            return strings.sourceNote || 'Clinical note';
+        }
+        return strings.sourceLabel || 'Source';
+    }
+
+    function friendlyTableName(table) {
+        var map = {
+            prescriptions: 'Prescriptions',
+            lists: 'Problem or allergy list',
+            procedure_result: 'Lab results',
+            form_encounter: 'Visit',
+            form_clinical_notes: 'Clinical notes',
+            openfda: 'Drug label (openFDA)',
+            dailymed: 'Drug label (DailyMed)'
+        };
+        if (table == null || String(table) === '') {
+            return '';
+        }
+        var key = String(table);
+        return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : key;
+    }
+
+    function formatDisplayDate(raw) {
+        if (raw == null || String(raw).trim() === '') {
+            return '';
+        }
+        var text = String(raw).trim();
+        var dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateOnly) {
+            var d = new Date(
+                Number(dateOnly[1]),
+                Number(dateOnly[2]) - 1,
+                Number(dateOnly[3])
+            );
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+            }
+        }
+        var parsed = Date.parse(text);
+        if (Number.isFinite(parsed)) {
+            return new Date(parsed).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+        return text;
+    }
+
+    /**
+     * Replace ISO date tokens (2026-01-18) in assistant/citation copy.
+     *
+     * @param {string|null|undefined} text
+     * @returns {string}
+     */
+    function humanizeIsoDatesInText(text) {
+        if (text == null || text === '') {
+            return '';
+        }
+        return String(text).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, function (match) {
+            return formatDisplayDate(match);
+        });
+    }
+
+    function formatRetrievedAt(raw) {
+        return formatDisplayDate(raw);
+    }
+
+    /**
      * Plain-text fallback for the citation dialog (WebDriver getText-safe).
      *
      * @param {object} citation
@@ -321,29 +548,94 @@
      */
     function formatCitationPlainText(citation) {
         var lines = [];
-        if (citation.source_type) {
-            lines.push('source_type: ' + String(citation.source_type));
-        }
         if (citation.title) {
-            lines.push('title: ' + String(citation.title));
+            lines.push(humanizeIsoDatesInText(String(citation.title)));
         }
-        if (citation.retrieved_at) {
-            lines.push('retrieved_at: ' + String(citation.retrieved_at));
+        var excerpt = citation.excerpt ? String(citation.excerpt) : '';
+        if (excerpt && excerpt !== citation.title) {
+            lines.push(humanizeIsoDatesInText(excerpt));
         }
-        if (citation.excerpt) {
-            lines.push('excerpt: ' + String(citation.excerpt));
+        if (citation.source_type) {
+            lines.push(
+                (strings.citeFrom || 'From') +
+                    ': ' +
+                    friendlySourceType(citation.source_type)
+            );
         }
         var locator = citation.locator || {};
-        if (locator.table) {
-            lines.push('table: ' + String(locator.table));
+        var recordType = friendlyTableName(locator.table);
+        if (recordType) {
+            lines.push((strings.citeRecordType || 'Record type') + ': ' + recordType);
         }
         if (locator.id) {
-            lines.push('id: ' + String(locator.id));
+            lines.push((strings.citeRecordId || 'Record ID') + ': ' + String(locator.id));
         }
-        if (locator.fhir_uuid) {
-            lines.push('fhir_uuid: ' + String(locator.fhir_uuid));
+        if (citation.retrieved_at) {
+            lines.push(
+                (strings.citeRetrieved || 'Retrieved') +
+                    ': ' +
+                    formatRetrievedAt(citation.retrieved_at)
+            );
         }
         return lines.join('\n');
+    }
+
+    /**
+     * Structured citation body for the in-pane dialog (textContent-only rows).
+     *
+     * @param {HTMLElement} parent
+     * @param {object} citation
+     */
+    function renderCitationBody(parent, citation) {
+        if (!parent) {
+            return;
+        }
+        parent.textContent = '';
+
+        var title = citation.title ? String(citation.title).trim() : '';
+        var excerpt = citation.excerpt ? String(citation.excerpt).trim() : '';
+
+        if (title) {
+            appendCiteRow(
+                parent,
+                strings.citeSummary || 'Summary',
+                humanizeIsoDatesInText(title)
+            );
+        }
+        if (excerpt && excerpt !== title) {
+            appendCiteRow(
+                parent,
+                strings.citeDetail || 'Details',
+                humanizeIsoDatesInText(excerpt)
+            );
+        }
+        if (citation.source_type) {
+            appendCiteRow(
+                parent,
+                strings.citeFrom || 'From',
+                friendlySourceType(citation.source_type)
+            );
+        }
+
+        var locator = citation.locator || {};
+        var recordType = friendlyTableName(locator.table);
+        if (recordType) {
+            appendCiteRow(parent, strings.citeRecordType || 'Record type', recordType);
+        }
+        if (locator.id) {
+            appendCiteRow(parent, strings.citeRecordId || 'Record ID', String(locator.id));
+        }
+        if (citation.retrieved_at) {
+            appendCiteRow(
+                parent,
+                strings.citeRetrieved || 'Retrieved',
+                formatRetrievedAt(citation.retrieved_at)
+            );
+        }
+
+        if (!parent.hasChildNodes()) {
+            parent.textContent = formatCitationPlainText(citation);
+        }
     }
 
     function lookupCitation(citeId) {
@@ -366,16 +658,22 @@
      */
     function attachSourceControl(line, citeId, citation) {
         registerCitations([citation]);
+        var displayNum = citationDisplayNumber(citeId);
         var srcBtn = document.createElement('button');
         srcBtn.type = 'button';
-        srcBtn.className = 'btn btn-link btn-sm ask-copilot-source';
+        srcBtn.className =
+            'btn btn-link btn-sm ask-copilot-cite-ref ask-copilot-source';
         srcBtn.setAttribute('data-cite-id', citeId);
         try {
             srcBtn.setAttribute('data-citation-json', JSON.stringify(citation));
         } catch (jsonErr) {
             // ignore — lookupCitation still works when registry is warm
         }
-        srcBtn.textContent = strings.sourceLabel || 'Source';
+        srcBtn.textContent = displayNum || '?';
+        srcBtn.setAttribute(
+            'aria-label',
+            (strings.sourceLabel || 'Source') + ' ' + (displayNum || citeId)
+        );
         srcBtn.addEventListener('click', function (evt) {
             evt.preventDefault();
             var payload = lookupCitation(citeId);
@@ -419,7 +717,8 @@
 
             var textSpan = document.createElement('span');
             textSpan.className = 'ask-copilot-segment-text';
-            textSpan.textContent = seg.text == null ? '' : String(seg.text);
+            textSpan.textContent =
+                seg.text == null ? '' : humanizeIsoDatesInText(String(seg.text));
             line.appendChild(textSpan);
 
             var citeId =
@@ -460,14 +759,23 @@
         citeReturnFocusEl = returnFocusEl || null;
 
         var locator = normalized.locator || {};
-        var plainBody = formatCitationPlainText(normalized);
-        if (!plainBody.trim()) {
-            plainBody =
-                normalized.citation_id != null
-                    ? 'citation_id: ' + String(normalized.citation_id)
-                    : 'Source details unavailable.';
+        var citeTitleEl = document.getElementById('acp-cite-title');
+        var displayNum = citationDisplayNumber(normalized.citation_id);
+        if (citeTitleEl) {
+            citeTitleEl.textContent = displayNum
+                ? (strings.sourceLabel || 'Source') + ' ' + displayNum
+                : strings.sourceLabel || 'Source';
         }
-        bodyEl.textContent = plainBody;
+
+        renderCitationBody(bodyEl, normalized);
+        if (!bodyEl.hasChildNodes() || bodyEl.textContent.trim() === '') {
+            bodyEl.textContent =
+                normalized.citation_id != null
+                    ? (strings.sourceLabel || 'Source') +
+                      ' ' +
+                      String(normalized.citation_id)
+                    : strings.streamFail || 'Source details unavailable.';
+        }
 
         var url = locator.url == null ? '' : String(locator.url);
         if (citeOpenEl) {
@@ -640,6 +948,17 @@
         setPickerStatus('');
     }
 
+    function formatPickerDob(dob) {
+        if (dob == null || String(dob).trim() === '') {
+            return '';
+        }
+        var formatted = formatDisplayDate(String(dob).trim());
+        if (formatted === '') {
+            return '';
+        }
+        return (strings.dobPrefix || 'DOB') + ' ' + formatted;
+    }
+
     /**
      * Build one clickable patient entry (card or row) with textContent only.
      *
@@ -654,33 +973,82 @@
             ? 'ask-copilot-picker-card'
             : 'ask-copilot-picker-row';
 
+        var patientName = appt.name == null ? '' : String(appt.name);
+        var startTime = appt.start_time == null ? '' : String(appt.start_time);
+        var dobLine = formatPickerDob(appt.dob);
+        var visitTitle = appt.title == null ? '' : String(appt.title).trim();
+
         if (isNextCard) {
+            var meta = document.createElement('div');
+            meta.className = 'ask-copilot-picker-card-meta';
+
             var badge = document.createElement('span');
             badge.className = 'ask-copilot-picker-badge';
-            badge.textContent = strings.nextPatient || 'Next';
-            btn.appendChild(badge);
+            badge.textContent = strings.nextPatientBadge || 'Next up';
+            meta.appendChild(badge);
+
+            if (startTime !== '') {
+                var timeSep = document.createElement('span');
+                timeSep.className = 'ask-copilot-picker-card-meta-sep';
+                timeSep.textContent = '·';
+                meta.appendChild(timeSep);
+
+                var time = document.createElement('span');
+                time.className = 'ask-copilot-picker-time';
+                time.textContent = startTime;
+                meta.appendChild(time);
+            }
+            btn.appendChild(meta);
+
+            var name = document.createElement('span');
+            name.className = 'ask-copilot-picker-card-name';
+            name.textContent = patientName;
+            btn.appendChild(name);
+
+            if (dobLine !== '') {
+                var dob = document.createElement('span');
+                dob.className = 'ask-copilot-picker-dob';
+                dob.textContent = dobLine;
+                btn.appendChild(dob);
+            }
+
+            if (visitTitle !== '') {
+                var title = document.createElement('span');
+                title.className = 'ask-copilot-picker-card-visit';
+                title.textContent = visitTitle;
+                btn.appendChild(title);
+            }
+
+            btn.setAttribute(
+                'aria-label',
+                (strings.selectNextPatient || 'Select next patient') +
+                    (patientName ? ' ' + patientName : '') +
+                    (startTime ? ' at ' + startTime : '')
+            );
+        } else {
+            var time = document.createElement('span');
+            time.className = 'ask-copilot-picker-time';
+            time.textContent = startTime;
+            btn.appendChild(time);
+
+            var rowName = document.createElement('span');
+            rowName.className = 'ask-copilot-picker-name';
+            rowName.textContent = patientName;
+            btn.appendChild(rowName);
+
+            if (dobLine !== '') {
+                var rowDob = document.createElement('span');
+                rowDob.className = 'ask-copilot-picker-dob';
+                rowDob.textContent = dobLine;
+                btn.appendChild(rowDob);
+            }
         }
 
-        var time = document.createElement('span');
-        time.className = 'ask-copilot-picker-time';
-        time.textContent = appt.start_time == null ? '' : String(appt.start_time);
-        btn.appendChild(time);
-
-        var name = document.createElement('span');
-        name.className = 'ask-copilot-picker-name';
-        name.textContent = appt.name == null ? '' : String(appt.name);
-        btn.appendChild(name);
-
-        var dob = document.createElement('span');
-        dob.className = 'ask-copilot-picker-dob';
-        dob.textContent =
-            (strings.dobPrefix || 'DOB') +
-            ' ' +
-            (appt.dob == null ? '' : String(appt.dob));
-        btn.appendChild(dob);
-
         btn.addEventListener('click', function () {
-            selectPatient(parseInt(appt.pid, 10));
+            selectPatient(
+                parseInt(appt.pid, 10),
+                appt.name == null ? null : String(appt.name)
+            );
         });
         return btn;
     }
@@ -719,6 +1087,27 @@
         }
 
         if (nextIndex !== -1) {
+            var nextHeading = document.createElement('div');
+            nextHeading.className = 'ask-copilot-picker-next-heading';
+            nextHeading.textContent = strings.nextPatientHeading || 'Next patient';
+            pickerNextEl.appendChild(nextHeading);
+
+            var nextMode =
+                data && data.next_pid_mode != null
+                    ? String(data.next_pid_mode)
+                    : '';
+            var nextHint = document.createElement('div');
+            nextHint.className = 'ask-copilot-picker-next-hint text-muted';
+            if (nextMode === 'first_today') {
+                nextHint.textContent =
+                    strings.nextPatientFallbackHint ||
+                    'First on today\u2019s schedule \u2014 select to start';
+            } else {
+                nextHint.textContent =
+                    strings.nextPatientHint || 'Up next in your schedule today';
+            }
+            pickerNextEl.appendChild(nextHint);
+
             pickerNextEl.appendChild(buildPatientButton(appointments[nextIndex], true));
         }
 
@@ -797,6 +1186,7 @@
                 throw new Error('HTTP ' + response.status);
             }
             var data = await response.json();
+            cacheSchedulePatientNames(data);
             renderSchedule(data);
         } catch (err) {
             renderScheduleError();
@@ -845,9 +1235,10 @@
      * bind lands. Never binds silently — always reached via a click.
      *
      * @param {number} pid
+     * @param {string|null|undefined} [displayName]
      * @returns {Promise<void>}
      */
-    async function selectPatient(pid) {
+    async function selectPatient(pid, displayName) {
         if (pickerBusy || !Number.isFinite(pid) || pid <= 0) {
             return;
         }
@@ -883,9 +1274,14 @@
                 clearTranscript();
             }
             boundPid = pid;
+            boundPatientName =
+                displayName != null && String(displayName).trim() !== ''
+                    ? String(displayName).trim()
+                    : schedulePatientNames[pid] || null;
             pickerBusy = false;
             closePicker();
             showGate(false, pid);
+            await updatePatientLine(pid, boundPatientName);
             return;
         }
 
@@ -1157,6 +1553,7 @@
         updateSendEnabled();
         setProgress('');
         appendBubble('user', message);
+        showTypingIndicator();
         pushTranscript('user', message);
         if (inputEl) {
             inputEl.value = '';
@@ -1205,6 +1602,7 @@
                 clearTimeout(citationTimer);
                 citationTimer = null;
             }
+            removeTypingIndicator();
             setProgress('');
             var text = pendingClinical.text || '';
             var segments = pendingClinical.segments;
@@ -1313,6 +1711,7 @@
                     gotTerminal = true;
                     clinicalRendered = true;
                     clearClinicalBuffer();
+                    removeTypingIndicator();
                     setProgress('');
                     var errMsg = formatErrorText(msg, meta);
                     if (
@@ -1371,7 +1770,9 @@
                       : 'client_error';
             appendBubble('system', formatErrorText(catchMsg, { code: catchCode }));
         } finally {
+            removeTypingIndicator();
             streaming = false;
+            updateSendEnabled();
             await refreshPatientState();
         }
     }
@@ -1383,7 +1784,7 @@
                 if (!target || typeof target.closest !== 'function') {
                     return;
                 }
-                var srcBtn = target.closest('.ask-copilot-source');
+                var srcBtn = target.closest('.ask-copilot-cite-ref, .ask-copilot-source');
                 if (!srcBtn || !messagesEl.contains(srcBtn)) {
                     return;
                 }
@@ -1473,6 +1874,15 @@
         registerCitations: registerCitations,
         lookupCitation: lookupCitation,
         renderAssistantTurn: renderAssistantTurn,
+        renderCitationBody: renderCitationBody,
+        formatCitationPlainText: formatCitationPlainText,
+        formatDisplayDate: formatDisplayDate,
+        formatPickerDob: formatPickerDob,
+        humanizeIsoDatesInText: humanizeIsoDatesInText,
+        citationDisplayNumber: citationDisplayNumber,
+        showTypingIndicator: showTypingIndicator,
+        removeTypingIndicator: removeTypingIndicator,
+        updatePatientLine: updatePatientLine,
         openCitation: openCitation,
         openSourceByElement: function (btn) {
             if (!btn) {

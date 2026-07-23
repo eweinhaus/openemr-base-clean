@@ -19,6 +19,7 @@ declare(strict_types=1);
 namespace OpenEMR\ClinicalCopilot\Chart;
 
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\ClinicalDisplayDate;
 use OpenEMR\Common\Database\QueryUtils;
 
 final class PatientContextService
@@ -153,7 +154,7 @@ final class PatientContextService
     private function mapEncounterFact(array $row): ChartFact
     {
         $id = $this->stringifyId($row['id'] ?? $row['encounter'] ?? '');
-        $date = $this->formatDate($row['date'] ?? null);
+        $date = ClinicalDisplayDate::format($row['date'] ?? null);
         $reason = trim($this->asString($row['reason'] ?? ''));
 
         $text = $date !== ''
@@ -187,13 +188,11 @@ final class PatientContextService
             $title = 'Unspecified problem';
         }
 
-        $diagnosis = trim($this->asString($row['diagnosis'] ?? ''));
+        // Title only — diagnosis codes (SNOMED-CT, ICD10, etc.) are not useful
+        // in physician-facing chat and waste context when echoed by the model.
         $text = 'Active problem: ' . $title;
-        if ($diagnosis !== '') {
-            $text .= ' (' . $diagnosis . ')';
-        }
 
-        $begdate = $this->formatDate($row['begdate'] ?? null);
+        $begdate = ClinicalDisplayDate::format($row['begdate'] ?? null);
         $excerpt = $begdate !== ''
             ? 'Problem list — onset ' . $begdate . ', active'
             : 'Problem list — active';
@@ -231,13 +230,4 @@ final class PatientContextService
         return '';
     }
 
-    private function formatDate(mixed $value): string
-    {
-        $raw = trim($this->asString($value));
-        if ($raw === '' || str_starts_with($raw, '0000-00-00')) {
-            return '';
-        }
-
-        return substr($raw, 0, 10);
-    }
 }

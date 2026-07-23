@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace OpenEMR\ClinicalCopilot\Chart;
 
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\ClinicalDisplayDate;
 use OpenEMR\Common\Database\QueryUtils;
 
 final class LabsChartService
@@ -128,7 +129,7 @@ final class LabsChartService
 
         $result = $this->asString($row['result'] ?? '');
         $units = trim($this->asString($row['units'] ?? ''));
-        $date = $this->formatDate($row['date'] ?? null);
+        $date = ClinicalDisplayDate::format($row['date'] ?? null);
         $range = trim($this->asString($row['range'] ?? ''));
         $abnormal = trim($this->asString($row['abnormal'] ?? ''));
 
@@ -194,15 +195,5 @@ final class LabsChartService
         }
 
         return '';
-    }
-
-    private function formatDate(mixed $value): string
-    {
-        $raw = trim($this->asString($value));
-        if ($raw === '' || str_starts_with($raw, '0000-00-00')) {
-            return '';
-        }
-
-        return substr($raw, 0, 10);
     }
 }

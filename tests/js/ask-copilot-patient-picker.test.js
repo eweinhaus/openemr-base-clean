@@ -55,6 +55,7 @@ const SCHEDULE = {
     date: '2026-07-21',
     timezone: 'America/Chicago',
     next_pid: 6,
+    next_pid_mode: 'upcoming',
     appointments: [
         {
             pid: 6,
@@ -78,8 +79,24 @@ const SCHEDULE = {
 // Session pid the mocked shell reports; mutate per test.
 let sessionPid = null;
 
+const PATIENT_NAMES = {
+    5: 'Alice Smith',
+    6: 'Jane Doe',
+    7: 'John Roe'
+};
+
 function jsonResponse(data, ok = true, status = 200) {
     return { ok, status, json: async () => data };
+}
+
+function mockFetchResponse(url) {
+    if (String(url).indexOf('patient.php') !== -1) {
+        return jsonResponse({
+            pid: sessionPid,
+            name: sessionPid != null ? PATIENT_NAMES[sessionPid] || null : null
+        });
+    }
+    return jsonResponse(SCHEDULE);
 }
 
 function loadApp(configOverrides = {}) {
@@ -90,6 +107,7 @@ function loadApp(configOverrides = {}) {
             csrf: 'test-csrf',
             streamUrl: '/openemr/interface/ask_copilot/stream.php',
             scheduleUrl: '/openemr/interface/ask_copilot/schedule.php',
+            patientUrl: '/openemr/interface/ask_copilot/patient.php',
             sessionPid: null,
             pickerPollIntervalMs: 100,
             pickerPollTimeoutMs: 1000,
@@ -144,7 +162,9 @@ beforeEach(() => {
     window.webroot_url = '/openemr';
     window.RTop = {};
     window.confirm = jest.fn(() => true);
-    window.fetch = jest.fn().mockResolvedValue(jsonResponse(SCHEDULE));
+    window.fetch = jest.fn().mockImplementation((url) =>
+        Promise.resolve(mockFetchResponse(url))
+    );
 });
 
 afterEach(() => {
@@ -212,12 +232,17 @@ describe('schedule rendering', () => {
         loadApp();
         await flush();
 
+        expect(el('acp-picker-next').textContent).toContain('Next patient');
+        expect(el('acp-picker-next').textContent).toContain('Up next');
+
         const nextWrap = el('acp-picker-next');
-        const card = nextWrap.querySelector('button');
+        const card = nextWrap.querySelector('.ask-copilot-picker-card');
         expect(card).not.toBeNull();
         expect(card.textContent).toContain('Jane Doe');
         expect(card.textContent).toContain('14:30');
-        expect(card.textContent).toContain('1980-04-12');
+        expect(card.textContent).toContain('DOB Apr 12, 1980');
+        expect(card.textContent).not.toContain('1980-04-12');
+        expect(card.getAttribute('aria-label')).toContain('Select next patient');
     });
 
     test('renders remaining appointments as clickable rows (next patient excluded)', async () => {
@@ -326,7 +351,7 @@ describe('patient selection', () => {
         expect(backdropVisible()).toBe(false);
         expect(el('acp-send').disabled).toBe(false);
         expect(el('acp-input').disabled).toBe(false);
-        expect(el('acp-patient-line').textContent).toContain('6');
+        expect(el('acp-patient-line').textContent).toContain('Jane Doe');
         expect(window.AskCopilot.getState().boundPid).toBe(6);
     });
 
@@ -386,11 +411,11 @@ describe('bound patient', () => {
 
         expect(pickerVisible()).toBe(false);
         expect(backdropVisible()).toBe(false);
-        expect(window.fetch).not.toHaveBeenCalled();
+        expect(window.fetch).toHaveBeenCalled();
         expect(el('acp-change-patient').classList.contains('d-none')).toBe(false);
         expect(el('acp-send').disabled).toBe(false);
         expect(el('acp-input').disabled).toBe(false);
-        expect(el('acp-patient-line').textContent).toContain('5');
+        expect(el('acp-patient-line').textContent).toContain('Alice Smith');
     });
 
     test('Change patient with empty transcript opens cancelable picker without confirm', async () => {
@@ -468,6 +493,6 @@ describe('bound patient', () => {
         expect(pickerVisible()).toBe(false);
         expect(app.getState().boundPid).toBe(6);
         expect(app.getState().transcriptLength).toBe(0);
-        expect(el('acp-patient-line').textContent).toContain('6');
+        expect(el('acp-patient-line').textContent).toContain('Jane Doe');
     });
 });

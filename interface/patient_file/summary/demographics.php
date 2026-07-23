@@ -921,7 +921,7 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
                     $date_of_death = $date_of_death['date_deceased'];
                 }
                 ?>
-            parent.left_nav.setPatient(<?php echo js_escape($result['fname'] . " " . $result['lname']) .
+            parent.left_nav.setPatient(<?php echo js_escape(getPatientFullNameAsString($pid)) .
                     "," . js_escape($pid) . "," . js_escape($result['pubpid']) . ",'',";
             if (empty($date_of_death)) {
                 echo js_escape(" " . xl('DOB') . ": " . oeFormatShortDate($result['DOB_YMD']) . " " . xl('Age') . ": " . getPatientAgeDisplay($result['DOB_YMD']));

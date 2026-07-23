@@ -23,6 +23,7 @@ final readonly class ProviderDaySchedule
         public string $date,
         public string $timezone,
         public ?int $nextPid,
+        public ?string $nextPidMode,
         public array $appointments,
     ) {
     }
@@ -32,6 +33,7 @@ final readonly class ProviderDaySchedule
      *     date: string,
      *     timezone: string,
      *     next_pid: int|null,
+     *     next_pid_mode: string|null,
      *     appointments: list<array{
      *         pid: int,
      *         name: string,
@@ -48,6 +50,7 @@ final readonly class ProviderDaySchedule
             'date' => $this->date,
             'timezone' => $this->timezone,
             'next_pid' => $this->nextPid,
+            'next_pid_mode' => $this->nextPidMode,
             'appointments' => array_map(
                 static fn (ScheduleAppointment $appointment): array => $appointment->toArray(),
                 $this->appointments,

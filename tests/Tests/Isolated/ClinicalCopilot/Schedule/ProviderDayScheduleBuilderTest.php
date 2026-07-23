@@ -17,6 +17,7 @@ namespace OpenEMR\Tests\Isolated\ClinicalCopilot\Schedule;
 use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\Schedule\NextAppointmentSelector;
 use OpenEMR\ClinicalCopilot\Schedule\ProviderDayScheduleBuilder;
 use OpenEMR\ClinicalCopilot\Schedule\TerminalAppointmentStatus;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -159,6 +160,18 @@ class ProviderDayScheduleBuilderTest extends TestCase
         $this->assertSame('Pending', $appt->status);
     }
 
+    public function testStripsSyntheaNumericSuffixesFromDisplayName(): void
+    {
+        $now = new DateTimeImmutable('2026-07-21 08:00:00', new DateTimeZone('America/Chicago'));
+        $rows = [
+            $this->row(6, 'Gonzalo160', 'Wisozk929', '1980-04-12', '09:00:00', 'Visit', '^', '^ Pending'),
+        ];
+
+        $schedule = $this->builder->build(7, $rows, '2026-07-21', 'America/Chicago', $now);
+
+        $this->assertSame('Gonzalo Wisozk', $schedule->appointments[0]->name);
+    }
+
     public function testNextPidUsesFifteenMinuteGrace(): void
     {
         $now = new DateTimeImmutable('2026-07-21 14:00:00', new DateTimeZone('America/Chicago'));
@@ -188,6 +201,7 @@ class ProviderDayScheduleBuilderTest extends TestCase
                 'date' => '2026-07-21',
                 'timezone' => 'UTC',
                 'next_pid' => 6,
+                'next_pid_mode' => NextAppointmentSelector::MODE_UPCOMING,
                 'appointments' => [
                     [
                         'pid' => 6,

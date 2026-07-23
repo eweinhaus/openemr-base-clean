@@ -76,7 +76,23 @@
 }
 
 .ask-copilot-picker-next {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.ask-copilot-picker-next-heading {
+    margin: 0 0 0.125rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #007bff;
+}
+
+.ask-copilot-picker-next-hint {
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
 }
 
 .ask-copilot-picker-card,
@@ -93,9 +109,37 @@
 }
 
 .ask-copilot-picker-card {
-    padding: 0.75rem;
-    border-color: #b8daff;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.875rem 1rem;
+    border-width: 2px;
+    border-color: #007bff;
     background: #e7f1ff;
+    box-shadow: 0 0.125rem 0.375rem rgba(0, 123, 255, 0.12);
+}
+
+.ask-copilot-picker-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ask-copilot-picker-card-meta-sep {
+    color: #6c757d;
+    font-size: 0.8125rem;
+}
+
+.ask-copilot-picker-card-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #212529;
+}
+
+.ask-copilot-picker-card-visit {
+    font-size: 0.8125rem;
+    color: #495057;
 }
 
 .ask-copilot-picker-card:hover:not(:disabled),
@@ -312,10 +356,37 @@
     word-wrap: break-word;
 }
 
+.ask-copilot-cite-ref,
 .ask-copilot-source {
-    margin-left: 0.35rem;
-    padding: 0;
-    vertical-align: baseline;
-    font-size: 0.8125rem;
-    line-height: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    margin-left: 0.25rem;
+    padding: 0 0.3rem;
+    vertical-align: super;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1;
+    color: #495057;
+    background: #e9ecef;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    text-decoration: none;
+}
+
+.ask-copilot-cite-ref:hover,
+.ask-copilot-cite-ref:focus,
+.ask-copilot-source:hover,
+.ask-copilot-source:focus {
+    color: #212529;
+    background: #dee2e6;
+    text-decoration: none;
+}
+
+.ask-copilot-typing {
+    color: #6c757d;
+    font-style: italic;
+    min-width: 2.5rem;
 }

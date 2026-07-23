@@ -75,12 +75,13 @@ class PatientContextServiceTest extends TestCase
         $this->assertCount(3, $facts);
         $this->assertSame('form_encounter', $facts[0]['table']);
         $this->assertSame('88', $facts[0]['id']);
-        $this->assertStringContainsString('2026-01-18', $facts[0]['text']);
+        $this->assertStringContainsString('Jan 18, 2026', $facts[0]['text']);
         $this->assertStringContainsString('Encounter for check up (procedure)', $facts[0]['text']);
 
         $this->assertSame('lists', $facts[1]['table']);
         $this->assertSame('101', $facts[1]['id']);
         $this->assertStringContainsString('Type 2 diabetes mellitus', $facts[1]['text']);
+        $this->assertStringNotContainsString('ICD10', $facts[1]['text']);
         $this->assertStringContainsString('Essential hypertension', $facts[2]['text']);
 
         foreach ($facts as $fact) {

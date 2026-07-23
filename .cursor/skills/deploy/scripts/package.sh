@@ -11,6 +11,8 @@ rm -rf "$STAGE"
 mkdir -p \
   "$STAGE/overlay/interface/ask_copilot" \
   "$STAGE/overlay/interface/modules/custom_modules" \
+  "$STAGE/overlay/interface/patient_file/summary" \
+  "$STAGE/overlay/library" \
   "$STAGE/overlay/src" \
   "$STAGE/sidecar"
 
@@ -19,6 +21,9 @@ cp -R "$ROOT/interface/ask_copilot/." "$STAGE/overlay/interface/ask_copilot/"
 cp -R "$ROOT/interface/modules/custom_modules/oe-module-ask-copilot" \
   "$STAGE/overlay/interface/modules/custom_modules/"
 cp -R "$ROOT/src/ClinicalCopilot" "$STAGE/overlay/src/"
+cp "$ROOT/library/patient.inc.php" "$STAGE/overlay/library/patient.inc.php"
+cp "$ROOT/interface/patient_file/summary/demographics.php" \
+  "$STAGE/overlay/interface/patient_file/summary/demographics.php"
 
 # Sidecar build context (no venv / tests / caches)
 rsync -a \
@@ -58,6 +63,8 @@ services:
       - sitevolume:/var/www/localhost/htdocs/openemr/sites
       - ./overlay/interface/ask_copilot:/var/www/localhost/htdocs/openemr/interface/ask_copilot
       - ./overlay/interface/modules/custom_modules/oe-module-ask-copilot:/var/www/localhost/htdocs/openemr/interface/modules/custom_modules/oe-module-ask-copilot
+      - ./overlay/interface/patient_file/summary/demographics.php:/var/www/localhost/htdocs/openemr/interface/patient_file/summary/demographics.php
+      - ./overlay/library/patient.inc.php:/var/www/localhost/htdocs/openemr/library/patient.inc.php
       - ./overlay/src/ClinicalCopilot:/var/www/localhost/htdocs/openemr/src/ClinicalCopilot
     environment:
       MYSQL_HOST: mysql

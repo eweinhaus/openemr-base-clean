@@ -269,6 +269,25 @@ describe('isAllowlistedHttpsUrl', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Date display (Jan 18, 2026)
+// ---------------------------------------------------------------------------
+describe('date display', () => {
+
+    test('formatDisplayDate converts ISO dates', () => {
+        const app = loadApp();
+        expect(app.formatDisplayDate('2026-01-18')).toBe('Jan 18, 2026');
+        expect(app.formatDisplayDate('2026-07-22T12:00:00Z')).toBe('Jul 22, 2026');
+    });
+
+    test('humanizeIsoDatesInText rewrites inline ISO tokens', () => {
+        const app = loadApp();
+        expect(app.humanizeIsoDatesInText('Last visit 2026-01-18 — check up')).toBe(
+            'Last visit Jan 18, 2026 — check up'
+        );
+    });
+});
+
+// ---------------------------------------------------------------------------
 // renderAssistantTurn — Source only on claim segments
 // ---------------------------------------------------------------------------
 describe('renderAssistantTurn', () => {
@@ -287,8 +306,9 @@ describe('renderAssistantTurn', () => {
         expect(sources).toHaveLength(2);
         expect(sources[0].getAttribute('data-cite-id')).toBe('c1');
         expect(sources[1].getAttribute('data-cite-id')).toBe('c2');
-        expect(sources[0].className).toContain('btn-link');
-        expect(sources[0].textContent).toBe('Source');
+        expect(sources[0].className).toContain('ask-copilot-cite-ref');
+        expect(sources[0].textContent).toBe('1');
+        expect(sources[1].textContent).toBe('2');
 
         const segments = el('acp-messages').querySelectorAll('.ask-copilot-segment');
         expect(segments).toHaveLength(3);
@@ -355,9 +375,10 @@ describe('citation dialog', () => {
 
         expect(citeVisible()).toBe(true);
         const body = el('acp-cite-body');
-        expect(body.textContent).toContain('research');
+        expect(body.textContent).toContain('Drug label');
         expect(body.textContent).toContain('Simvastatin label');
         expect(body.textContent).toContain('Simvastatin —');
+        expect(body.textContent).not.toContain('source_type:');
         expect(body.querySelector('img')).toBeNull();
 
         const openLink = el('acp-cite-open');
@@ -388,13 +409,12 @@ describe('citation dialog', () => {
 
         expect(citeVisible()).toBe(true);
         expect(el('acp-cite-open').classList.contains('d-none')).toBe(true);
-        expect(el('acp-cite-body').textContent).toContain('chart');
-        expect(el('acp-cite-body').textContent).toContain('procedure_result');
+        expect(el('acp-cite-body').textContent).toContain('Patient chart');
+        expect(el('acp-cite-body').textContent).toContain('Lab results');
         expect(el('acp-cite-body').textContent).toContain('42');
-        expect(el('acp-cite-body').textContent).toContain('2026-07-22T12:00:00Z');
-        expect(el('acp-cite-body').textContent).toContain(
-            'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
-        );
+        expect(el('acp-cite-body').textContent).not.toContain('fhir_uuid');
+        expect(el('acp-cite-body').textContent).toContain('Jul 22, 2026');
+        expect(el('acp-cite-body').textContent).not.toContain('2026-07-22T12:00:00Z');
     });
 
     test('Escape and Close restore focus to the Source button', async () => {
@@ -498,13 +518,20 @@ describe('SSE clinical+citation buffering', () => {
         const sendPromise = app.sendMessage();
         await flush();
 
-        // Still buffering — no assistant bubble yet.
-        expect(el('acp-messages').querySelector('.ask-copilot-bubble-assistant')).toBeNull();
+        // Still buffering clinical — only the typing indicator, not the reply.
+        expect(el('acp-messages').querySelector('.ask-copilot-typing')).not.toBeNull();
+        expect(
+            el('acp-messages').querySelector(
+                '.ask-copilot-bubble-assistant:not(.ask-copilot-typing)'
+            )
+        ).toBeNull();
 
         await jest.advanceTimersByTimeAsync(2500);
         await flush();
 
-        const assistant = el('acp-messages').querySelector('.ask-copilot-bubble-assistant');
+        const assistant = el('acp-messages').querySelector(
+            '.ask-copilot-bubble-assistant:not(.ask-copilot-typing)'
+        );
         expect(assistant).not.toBeNull();
         expect(assistant.textContent).toBe('Plain clinical fallback');
         expect(assistant.querySelector('.ask-copilot-source')).toBeNull();
@@ -514,7 +541,11 @@ describe('SSE clinical+citation buffering', () => {
         await flush();
 
         // Still a single plain assistant bubble (no double-render).
-        expect(el('acp-messages').querySelectorAll('.ask-copilot-bubble-assistant')).toHaveLength(1);
+        expect(
+            el('acp-messages').querySelectorAll(
+                '.ask-copilot-bubble-assistant:not(.ask-copilot-typing)'
+            )
+        ).toHaveLength(1);
     });
 
     test('transcript stores plain text only (no citation markup)', async () => {

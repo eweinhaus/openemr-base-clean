@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace OpenEMR\ClinicalCopilot\Chart;
 
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\ClinicalDisplayDate;
 use OpenEMR\Common\Database\QueryUtils;
 
 final class MedsChartService
@@ -216,7 +217,7 @@ final class MedsChartService
             $text .= self::RXNORM_UNCERTAIN_SUFFIX;
         }
 
-        $start = $this->formatDate($row['start_date'] ?? $row['date_added'] ?? null);
+        $start = ClinicalDisplayDate::format($row['start_date'] ?? $row['date_added'] ?? null);
         $excerpt = $start !== ''
             ? 'Active Rx — started ' . $start
             : 'Active Rx';
@@ -300,16 +301,6 @@ final class MedsChartService
         }
 
         return '';
-    }
-
-    private function formatDate(mixed $value): string
-    {
-        $raw = trim($this->asString($value));
-        if ($raw === '' || str_starts_with($raw, '0000-00-00')) {
-            return '';
-        }
-
-        return substr($raw, 0, 10);
     }
 
     private function truncate(string $value, int $max): string

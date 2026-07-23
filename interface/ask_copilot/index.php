@@ -14,9 +14,11 @@
 
 require_once("../globals.php");
 
+use OpenEMR\ClinicalCopilot\PatientDisplayName;
 use OpenEMR\Common\Acl\AccessDeniedHelper;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
@@ -33,9 +35,31 @@ $assetVersion = $globalsBag->getString('v_js_includes');
 $csrfToken = CsrfUtils::collectCsrfToken($session);
 $streamUrl = $webroot . '/interface/ask_copilot/stream.php';
 $scheduleUrl = $webroot . '/interface/ask_copilot/schedule.php';
+$patientUrl = $webroot . '/interface/ask_copilot/patient.php';
 // Session pid for gate fallback when this page is top-level (not under main.php iframe).
 $sessionPidRaw = $session->get('pid');
 $sessionPid = is_numeric($sessionPidRaw) ? (int) $sessionPidRaw : 0;
+$sessionPatientName = null;
+if ($sessionPid > 0) {
+    try {
+        $nameRows = QueryUtils::fetchRecords(
+            'SELECT fname, lname FROM patient_data WHERE pid = ? LIMIT 1',
+            [$sessionPid],
+        );
+        $nameRow = $nameRows[0] ?? null;
+        if (is_array($nameRow)) {
+            $displayName = PatientDisplayName::fromParts(
+                is_string($nameRow['fname'] ?? null) ? $nameRow['fname'] : (string) ($nameRow['fname'] ?? ''),
+                is_string($nameRow['lname'] ?? null) ? $nameRow['lname'] : (string) ($nameRow['lname'] ?? ''),
+            );
+            if ($displayName !== '') {
+                $sessionPatientName = $displayName;
+            }
+        }
+    } catch (Throwable) {
+        // Non-fatal — client can fetch patient.php when bound.
+    }
+}
 $assetDir = __DIR__ . '/assets';
 $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilot.js') ?: 0);
 ?>
@@ -130,7 +154,9 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
             csrf: <?php echo js_escape($csrfToken); ?>,
             streamUrl: <?php echo js_escape($streamUrl); ?>,
             scheduleUrl: <?php echo js_escape($scheduleUrl); ?>,
+            patientUrl: <?php echo js_escape($patientUrl); ?>,
             sessionPid: <?php echo $sessionPid > 0 ? (int) $sessionPid : 'null'; ?>,
+            sessionPatientName: <?php echo $sessionPatientName !== null ? js_escape($sessionPatientName) : 'null'; ?>,
             strings: {
                 selectPatient: <?php echo xlj('Select a patient before chatting.'); ?>,
                 enterMessage: <?php echo xlj('Enter a message.'); ?>,
@@ -139,7 +165,12 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
                 patientChanged: <?php echo xlj('Patient changed. Clear the chat and try again.'); ?>,
                 patientPrefix: <?php echo xlj('Patient'); ?>,
                 nextPatient: <?php echo xlj('Next'); ?>,
-                appointmentsToday: <?php echo xlj('Appointments today'); ?>,
+                nextPatientHeading: <?php echo xlj('Next patient'); ?>,
+                nextPatientHint: <?php echo xlj('Up next in your schedule today'); ?>,
+                nextPatientFallbackHint: <?php echo xlj('First on today\'s schedule — select to start'); ?>,
+                nextPatientBadge: <?php echo xlj('Next up'); ?>,
+                selectNextPatient: <?php echo xlj('Select next patient'); ?>,
+                appointmentsToday: <?php echo xlj('Later today'); ?>,
                 scheduleLoading: <?php echo xlj('Loading schedule...'); ?>,
                 scheduleEmpty: <?php echo xlj('No appointments today. Use Search all patients.'); ?>,
                 scheduleError: <?php echo xlj('Could not load the schedule.'); ?>,
@@ -150,6 +181,16 @@ $assetBust = $assetVersion . '.' . (string) (@filemtime($assetDir . '/ask_copilo
                 confirmSwitch: <?php echo xlj('Switching patients clears this chat. Continue?'); ?>,
                 dobPrefix: <?php echo xlj('DOB'); ?>,
                 sourceLabel: <?php echo xlj('Source'); ?>,
+                citeSummary: <?php echo xlj('Summary'); ?>,
+                citeDetail: <?php echo xlj('Details'); ?>,
+                citeFrom: <?php echo xlj('From'); ?>,
+                citeRecordType: <?php echo xlj('Record type'); ?>,
+                citeRecordId: <?php echo xlj('Record ID'); ?>,
+                citeRetrieved: <?php echo xlj('Retrieved'); ?>,
+                sourceChart: <?php echo xlj('Patient chart'); ?>,
+                sourceResearch: <?php echo xlj('Drug label'); ?>,
+                sourceNote: <?php echo xlj('Clinical note'); ?>,
+                typing: <?php echo xlj('Thinking…'); ?>,
                 openLabel: <?php echo xlj('Open label'); ?>,
                 citeClose: <?php echo xlj('Close'); ?>,
                 chartLocator: <?php echo xlj('Chart locator:'); ?>,

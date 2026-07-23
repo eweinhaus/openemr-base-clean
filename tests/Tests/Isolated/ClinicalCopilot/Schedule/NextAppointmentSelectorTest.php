@@ -66,7 +66,7 @@ class NextAppointmentSelectorTest extends TestCase
         $this->assertSame(6, NextAppointmentSelector::selectNextPid($appointments, $now));
     }
 
-    public function testReturnsNullWhenAllAppointmentsArePastGrace(): void
+    public function testFallsBackToFirstAppointmentWhenAllArePastGrace(): void
     {
         $now = new DateTimeImmutable('2026-07-21 16:00:00', new DateTimeZone('America/Chicago'));
         $appointments = [
@@ -74,7 +74,11 @@ class NextAppointmentSelectorTest extends TestCase
             $this->appt(2, '10:30'),
         ];
 
-        $this->assertNull(NextAppointmentSelector::selectNextPid($appointments, $now));
+        $next = NextAppointmentSelector::selectNext($appointments, $now);
+
+        $this->assertSame(1, $next['pid']);
+        $this->assertSame(NextAppointmentSelector::MODE_FIRST_TODAY, $next['mode']);
+        $this->assertSame(1, NextAppointmentSelector::selectNextPid($appointments, $now));
     }
 
     public function testUsesAppointmentDateFromNowNotCallerDateString(): void

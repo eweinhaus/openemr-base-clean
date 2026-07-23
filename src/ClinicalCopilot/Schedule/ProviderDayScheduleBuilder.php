@@ -16,6 +16,7 @@ namespace OpenEMR\ClinicalCopilot\Schedule;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\PatientDisplayName;
 
 final class ProviderDayScheduleBuilder
 {
@@ -50,10 +51,13 @@ final class ProviderDayScheduleBuilder
         /** @var list<ScheduleAppointment> $appointments */
         $appointments = array_values($appointments);
 
+        $next = NextAppointmentSelector::selectNext($appointments, $now);
+
         return new ProviderDaySchedule(
             date: $date,
             timezone: $timezone,
-            nextPid: NextAppointmentSelector::selectNextPid($appointments, $now),
+            nextPid: $next['pid'],
+            nextPidMode: $next['mode'],
             appointments: $appointments,
         );
     }
@@ -82,9 +86,10 @@ final class ProviderDayScheduleBuilder
             return null;
         }
 
-        $fname = trim($this->asString($row['fname'] ?? ''));
-        $lname = trim($this->asString($row['lname'] ?? ''));
-        $name = trim($fname . ' ' . $lname);
+        $name = PatientDisplayName::fromParts(
+            $this->asString($row['fname'] ?? ''),
+            $this->asString($row['lname'] ?? ''),
+        );
         if ($name === '') {
             $name = 'Patient ' . $pid;
         }

@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace OpenEMR\ClinicalCopilot\Chart;
 
 use InvalidArgumentException;
+use OpenEMR\ClinicalCopilot\ClinicalDisplayDate;
 use OpenEMR\Common\Database\QueryUtils;
 
 final class NotesChartService
@@ -128,7 +129,7 @@ final class NotesChartService
         }
 
         $excerpt = $this->truncate($plain, $excerptMax);
-        $date = $this->formatDate($row['date'] ?? null);
+        $date = ClinicalDisplayDate::format($row['date'] ?? null);
         $type = trim($this->asString($row['clinical_notes_type'] ?? ''));
         $codetext = trim($this->asString($row['codetext'] ?? ''));
 
@@ -188,15 +189,5 @@ final class NotesChartService
         }
 
         return '';
-    }
-
-    private function formatDate(mixed $value): string
-    {
-        $raw = trim($this->asString($value));
-        if ($raw === '' || str_starts_with($raw, '0000-00-00')) {
-            return '';
-        }
-
-        return substr($raw, 0, 10);
     }
 }

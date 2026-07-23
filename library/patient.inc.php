@@ -20,6 +20,7 @@
 
 use OpenEMR\BC\Utilities;
 use OpenEMR\Billing\InsurancePolicyTypes;
+use OpenEMR\ClinicalCopilot\PatientDisplayName;
 use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Common\Uuid\UuidRegistry;
@@ -878,19 +879,24 @@ function getPatientFullNameAsString($pid): string
         return "";
     }
 
-    $name = $pt['fname'];
+    $fname = PatientDisplayName::sanitizePart((string) ($pt['fname'] ?? ''));
+    $mname = PatientDisplayName::sanitizePart((string) ($pt['mname'] ?? ''));
+    $lname = PatientDisplayName::sanitizePart((string) ($pt['lname'] ?? ''));
+    $suffix = trim((string) ($pt['suffix'] ?? ''));
 
-    if ($pt['mname']) {
-        $name .= " {$pt['mname']}";
+    $name = $fname;
+
+    if ($mname !== '') {
+        $name .= " {$mname}";
     }
 
-    $name .= " {$pt['lname']}";
+    $name .= " {$lname}";
 
-    if ($pt['suffix']) {
-        $name .= " {$pt['suffix']}";
+    if ($suffix !== '') {
+        $name .= " {$suffix}";
     }
 
-    return $name;
+    return trim($name);
 }
 
 /* return a patient's name in the format FIRST LAST */

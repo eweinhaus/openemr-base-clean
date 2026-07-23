@@ -17,8 +17,18 @@ cost analysis, k6 scaffold, ARCHITECTURE conflict wording aligned to deferred
 MVP. External still open: **demo video (A7)** and **social post (A10)**. Load
 baseline numbers (L2) need a real k6 run to fill.
 
-**Next:** Manual §12 walkthrough sign-off; redeploy remediation + setup scripts
-to DO; optional schedule picker first-load polish; demo video / Early narrative.
+**DO redeploy (2026-07-23 UX pass):** uncommitted local overlay shipped to
+https://142.93.255.212/ — patient display names (`PatientDisplayName`,
+`patient.inc.php` mount), friendly dates (`ClinicalDisplayDate`), numbered
+citations + typing indicator + readable source popup + patient header
+(`patient.php`), picker DOB/next-patient UX. DB: Synthea name cleanup +
+today's `CoPilot Demo` appts (pids 6/2; pid 8 absent on DO). Module active;
+`/ready` true; OpenRouter set; mounts OK incl. `library/patient.inc.php`.
+
+**Prior DO redeploy (2026-07-23):** commit `d08ea03` — sidecar rebuild,
+mounts OK, `/ready` 200, OpenRouter set, module re-enabled.
+
+**Next:** Public §12 browser smoke on DO; commit + push UX pass; demo video (A7).
 
 ## PRD 07 decisions (locked — implemented)
 

@@ -4,6 +4,15 @@
 --
 -- Safe to re-run daily (appointments roll to CURDATE(); prior CoPilot Demo rows removed).
 
+-- ---------------------------------------------------------------------------
+-- Synthea name cleanup: strip numeric suffixes (Gonzalo160 → Gonzalo, etc.)
+-- ---------------------------------------------------------------------------
+UPDATE patient_data
+SET
+  fname = TRIM(REGEXP_REPLACE(fname, '[0-9]+', '')),
+  lname = TRIM(REGEXP_REPLACE(lname, '[0-9]+', ''))
+WHERE fname REGEXP '[0-9]' OR lname REGEXP '[0-9]';
+
 SET @provider_id = (
   SELECT id FROM users WHERE username = 'admin' LIMIT 1
 );

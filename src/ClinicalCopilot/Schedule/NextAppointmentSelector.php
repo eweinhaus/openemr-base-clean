@@ -22,11 +22,21 @@ final class NextAppointmentSelector
 {
     public const GRACE_MINUTES = 15;
 
+    public const MODE_UPCOMING = 'upcoming';
+
+    public const MODE_FIRST_TODAY = 'first_today';
+
     /**
      * @param list<ScheduleAppointment> $appointments Chronological, already non-terminal
+     *
+     * @return array{pid: int|null, mode: string|null}
      */
-    public static function selectNextPid(array $appointments, DateTimeImmutable $now): ?int
+    public static function selectNext(array $appointments, DateTimeImmutable $now): array
     {
+        if ($appointments === []) {
+            return ['pid' => null, 'mode' => null];
+        }
+
         $threshold = $now->modify('-' . self::GRACE_MINUTES . ' minutes');
         $day = $now->format('Y-m-d');
 
@@ -40,10 +50,20 @@ final class NextAppointmentSelector
                 continue;
             }
             if ($start >= $threshold) {
-                return $appointment->pid;
+                return ['pid' => $appointment->pid, 'mode' => self::MODE_UPCOMING];
             }
         }
 
-        return null;
+        // End-of-day / demo: still surface the first appointment so the picker
+        // has a clear default when nothing is within the grace window.
+        return ['pid' => $appointments[0]->pid, 'mode' => self::MODE_FIRST_TODAY];
+    }
+
+    /**
+     * @param list<ScheduleAppointment> $appointments Chronological, already non-terminal
+     */
+    public static function selectNextPid(array $appointments, DateTimeImmutable $now): ?int
+    {
+        return self::selectNext($appointments, $now)['pid'];
     }
 }

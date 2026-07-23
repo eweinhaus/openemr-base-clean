@@ -46,8 +46,15 @@
 - [x] **Local demo QA blockers fixed (2026-07-23):** U1-5 citation popup,
   U3-4/F-2 uncertain RxNorm assembly, U3-6 off-chart line, T-1 pytest secret
   alignment — Panther 43 pass / pytest 165 pass.
-- [ ] Manual local demo smoke (`docs/local-demo-success-criteria.md` §12) + §9 automated gate
-- [ ] Redeploy success-criteria remediation + setup scripts to DO
+- [x] **Local demo automated gate (2026-07-23):** §9 pytest 165 + Panther 43/0 + Jest 11.
+- [x] **DO redeploy UX pass (2026-07-23):** overlay tarball (uncommitted local) —
+  citation numbers, typing bubble, friendly dates, patient names, picker UX,
+  `patient.php`, `ClinicalDisplayDate`/`PatientDisplayName`; extended package
+  mounts for `library/patient.inc.php` + demographics; DB name cleanup +
+  today appts seeded (Lisinopril INSERT still fails DO schema — pre-existing).
+- [x] **DO redeploy QA fixes (2026-07-23):** commit `d08ea03` — sidecar rebuild,
+  mounts OK, `/ready` 200, OpenRouter set, module enabled.
+- [ ] Public DO browser smoke (`docs/local-demo-success-criteria.md` §12 on 142.93.255.212)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO
 - [ ] Optional fuller PRD 05 UI smoke (pid 2 uncertain no-HTTP; off-chart amoxicillin not-on-list; Ask Co-Pilot tab click-path)
 - [ ] Optional LangSmith keys on DO for redacted-trace screenshot
@@ -57,7 +64,7 @@
 
 - Public site: demo credentials, no DB TLS, self-signed HTTPS — intentional Gauntlet demo posture
 - **DO uses overlay bind-mounts** under `/opt/openemr/overlay/` (not a fork-built OpenEMR image yet)
-- **DO/local `CoPilot Demo%` appts** — re-seed daily via `scripts/copilot/setup-local-demo.sh --seed-only` (idempotent; targets pids 6/8/2 when present)
+- **DO/local `CoPilot Demo%` appts** — re-seed daily via `seed_local_demo.sql` on DO or `scripts/copilot/setup-local-demo.sh --seed-only` locally (idempotent; targets pids 6/8/2 when present — DO may only have 6/2)
 - OpenEMR ACL not patient-panel scoped — co-pilot tool layer must enforce pid
 - Twig autoescape off — manual escape on co-pilot UI
 - Med decision-support is high-stakes — cited decision support only; no dosing without retrieved source
