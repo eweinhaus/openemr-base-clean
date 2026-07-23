@@ -85,8 +85,11 @@
   in `dosing.py`; switch-target resolve reorder in `resolve.py`; meds synthesize +
   draft prompt tweaks in `llm.py`; integration tests tools/verify/assembly;
   Tier 2b `synthesis_failure_line` confirmed; sidecar pytest **246**.
-- [ ] Manual PRD 11 smoke M1–M4 local (pid 6 switch + meds list/dosing regressions)
-- [ ] Commit PRD 11 + Tier 2b; redeploy sidecar to DO
+- [x] **Commit PRD 11 + Tier 2b (2026-07-23):** commit `c2339aa` — switch/replace
+  regex + resolve; synthesis_failure_line; sidecar pytest **246**.
+- [x] **DO redeploy PRD 11 (2026-07-23):** commit `c2339aa` — sidecar rebuild;
+  `/ready` true; OpenRouter set; module active; SSH smoke OK.
+- [ ] Manual PRD 11 smoke M1–M4 local + DO (pid 6 switch + meds list/dosing regressions)
 - [ ] Manual PRD 10 smoke M1–M5 local (pid 6 brief/labs/meds + dosing disclaimer)
 - [ ] Public DO browser smoke (`docs/local-demo-success-criteria.md` §12 on 142.93.255.212)
 - [ ] Optional Ask Co-Pilot Source popup click-path smoke on DO

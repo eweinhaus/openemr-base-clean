@@ -86,8 +86,11 @@ fallback chart facts + scope disclaimers; synthesis drops route prefix labels;
 assembly-only turns skip collapsed sources toggle; sidecar healthy; `/ready` true;
 OpenRouter set; module re-enabled; login HTTP 200. SSH smoke only this session.
 
-**Next:** Manual PRD 11 smoke M1–M4 (pid 6 switch + regressions); commit PRD 11 +
-Tier 2b; redeploy sidecar to DO; manual PRD 10 M1–M5.
+**DO redeploy PRD 11 (2026-07-23):** commit `c2339aa` — switch/replace intent +
+synthesis_failure_line; sidecar rebuild; `/ready` true; OpenRouter set; module
+active; SSH smoke OK (mounts, health, ready). Manual PRD 11 M1–M4 not run on DO.
+
+**Next:** Manual PRD 11 smoke M1–M4 local + DO browser; manual PRD 10 M1–M5.
 
 ## PRD 07 decisions (locked — implemented)
 
