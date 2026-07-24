@@ -731,6 +731,22 @@
         'No recent notes on file.': true
     };
 
+    var SYNTHESIS_FAILURE_PREFIX = "I couldn't answer this question";
+
+    /**
+     * Visible assembly copy when synthesis fails — must not hide behind sources toggle.
+     *
+     * @param {{kind?: string, text?: string}} seg
+     * @returns {boolean}
+     */
+    function isVisibleNoticeAssemblySegment(seg) {
+        if (!seg || seg.kind !== 'assembly') {
+            return false;
+        }
+        var text = seg.text == null ? '' : String(seg.text);
+        return text.indexOf(SYNTHESIS_FAILURE_PREFIX) === 0;
+    }
+
     /**
      * @param {{kind?: string, text?: string}} seg
      * @returns {boolean}
@@ -776,6 +792,7 @@
         var claims = [];
         var panelAssemblies = [];
         var assemblies = [];
+        var notices = [];
 
         for (var i = 0; i < segs.length; i++) {
             var seg = segs[i] || {};
@@ -783,6 +800,8 @@
                 bubble.appendChild(renderSegmentLine(seg, map));
             } else if (seg.kind === 'claim') {
                 claims.push(seg);
+            } else if (isVisibleNoticeAssemblySegment(seg)) {
+                notices.push(seg);
             } else if (isCollapsedAssemblySegment(seg)) {
                 panelAssemblies.push(seg);
             } else if (seg.kind === 'assembly') {
@@ -790,6 +809,10 @@
             } else {
                 bubble.appendChild(renderSegmentLine(seg, map));
             }
+        }
+
+        for (var n = 0; n < notices.length; n++) {
+            bubble.appendChild(renderSegmentLine(notices[n], map));
         }
 
         if (claims.length > 0) {

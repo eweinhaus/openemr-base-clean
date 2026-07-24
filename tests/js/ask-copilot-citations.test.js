@@ -560,6 +560,34 @@ describe('renderAssistantTurn — collapsed verified sources (PRD 10)', () => {
         expect(bubble.textContent).toContain('No allergies on file.');
     });
 
+    test('synthesis failure line renders above collapsed sources toggle', async () => {
+        const app = loadApp();
+        await flush();
+
+        const failureLine =
+            "I couldn't answer this question — I wasn't able to put together a readable reply from the chart; expand the sources below to review what's on file.";
+        const segments = [
+            { kind: 'claim', text: 'Creatinine 1.1 mg/dL', citation_id: 'c1' },
+            { kind: 'claim', text: 'Potassium 4.0 mEq/L', citation_id: 'c2' },
+            { kind: 'assembly', text: failureLine }
+        ];
+
+        app.renderAssistantTurn(segments, buildCitationMap());
+
+        const bubble = assistantBubble();
+        const toggle = sourcesToggle(bubble);
+        expect(toggle).not.toBeNull();
+        expect(toggle.textContent).toBe('Show verified sources (2)');
+
+        const noticeSeg = bubble.querySelector('.ask-copilot-segment');
+        expect(noticeSeg).not.toBeNull();
+        expect(noticeSeg.textContent).toContain("I couldn't answer this question");
+        expect(noticeSeg.closest('.ask-copilot-sources-panel')).toBeNull();
+        expect(noticeSeg.compareDocumentPosition(toggle)).toBe(
+            Node.DOCUMENT_POSITION_FOLLOWING
+        );
+    });
+
     test('empty allergy and notes assembly lines render inside collapsed panel', async () => {
         const app = loadApp();
         await flush();

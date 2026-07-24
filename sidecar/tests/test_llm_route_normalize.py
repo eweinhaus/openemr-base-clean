@@ -9,6 +9,7 @@ import pytest
 from sidecar.app.llm import (
     DEFAULT_OPENROUTER_MODEL,
     LlmError,
+    is_labs_abnormal_followup_like,
     normalize_route,
     route_message,
 )
@@ -94,3 +95,28 @@ def test_route_message_missing_api_key_raises_llm_error() -> None:
     with patch.dict("os.environ", {"OPENROUTER_API_KEY": ""}, clear=False):
         with pytest.raises(LlmError, match="OPENROUTER_API_KEY"):
             route_message("Hello")
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Do any of these stand out as abnormal?",
+        "Are any of these labs concerning?",
+        "Which results are flagged abnormal?",
+        "Anything abnormal in the recent panel?",
+    ],
+)
+def test_is_labs_abnormal_followup_like(message: str) -> None:
+    assert is_labs_abnormal_followup_like(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "What medications is the patient on?",
+        "Brief me on this patient.",
+        "What is creatinine?",
+    ],
+)
+def test_is_labs_abnormal_followup_like_negative(message: str) -> None:
+    assert is_labs_abnormal_followup_like(message) is False

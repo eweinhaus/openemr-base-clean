@@ -28,7 +28,7 @@ ROUTE_SYSTEM_PROMPT = (
     "You classify clinical co-pilot user messages into exactly one route. "
     "Reply with only one word: brief, labs, or meds. "
     "brief = general chart summary or overview. "
-    "labs = laboratory results or values. "
+    "labs = laboratory results or values, including whether results are abnormal. "
     "meds = medications, prescriptions, dosing, switches, or replacements. "
     "If intent is mixed or unclear, pick the primary intent."
 )
@@ -58,6 +58,29 @@ BRIEF_DRAFT_ADDENDUM = (
 LABS_DRAFT_ADDENDUM = (
     "Select lab results relevant to the question; prefer most recent; "
     "include abnormal wording when in fact text."
+)
+
+LABS_ABNORMAL_FOLLOWUP_DRAFT_ADDENDUM = (
+    "The user is asking whether any lab results are abnormal or stand out. "
+    "Include recent lab facts from tool results — prioritize facts whose text "
+    "mentions abnormal flags or out-of-range wording. When the question refers "
+    "to 'these' or prior results, select from the labs tool facts for this "
+    "patient (do not invent values). If every lab fact is normal or lacks an "
+    "abnormal flag, still include the relevant recent lab facts so the answer "
+    "can state that none are flagged abnormal on file."
+)
+
+_LABS_ABNORMAL_FOLLOWUP = re.compile(
+    r"\b("
+    r"abnormal|abnormality|stand\s+out|concerning|out\s+of\s+range|"
+    r"flagged|critical|elevated|reduced|high|low"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_LABS_DEICTIC_FOLLOWUP = re.compile(
+    r"\b(these|those|any\s+of\s+(?:these|them)|which\s+ones?)\b",
+    re.IGNORECASE,
 )
 
 MEDS_DRAFT_ADDENDUM = (
@@ -93,6 +116,13 @@ SYNTHESIZE_LABS_SYSTEM_PROMPT = (
     "Use only verified lab fact texts — do not introduce new values, dates, or tests. "
     "Do not discuss medications or allergies unless they appear in verified lab facts. "
     "Target roughly 40–80 words. No markdown, bullets, or citation markers."
+)
+
+SYNTHESIZE_LABS_ABNORMAL_FOLLOWUP_ADDENDUM = (
+    "When the user asks whether any results stand out or are abnormal, say "
+    "clearly which verified lab facts are flagged abnormal — or state that none "
+    "of the verified lab facts include an abnormal flag on file. Do not infer "
+    "abnormality from numeric values alone unless the verified fact text says so."
 )
 
 SYNTHESIZE_MEDS_SYSTEM_PROMPT = (
@@ -140,6 +170,22 @@ def is_auto_brief_message(message: str) -> bool:
     return normalized == target
 
 
+def is_labs_abnormal_followup_like(message: str) -> bool:
+    """True when the user asks whether labs/results are abnormal or stand out."""
+    text = message.strip()
+    if not text:
+        return False
+    if _LABS_ABNORMAL_FOLLOWUP.search(text):
+        return True
+    if _LABS_DEICTIC_FOLLOWUP.search(text) and re.search(
+        r"\b(abnormal|stand|concerning|flag|result|lab|value|out)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def normalize_route(raw: str) -> Route:
     """Normalize a route label; invalid or empty values default to brief."""
     text = raw.strip()
@@ -178,6 +224,10 @@ def draft_claims_raw(
         system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{BRIEF_DRAFT_ADDENDUM}"
     elif route == "labs":
         system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{LABS_DRAFT_ADDENDUM}"
+        if is_labs_abnormal_followup_like(message):
+            system_prompt = (
+                f"{system_prompt}\n\n{LABS_ABNORMAL_FOLLOWUP_DRAFT_ADDENDUM}"
+            )
     elif route == "meds":
         system_prompt = f"{DRAFT_SYSTEM_PROMPT}\n\n{MEDS_DRAFT_ADDENDUM}"
     return _chat_completion(
@@ -199,6 +249,10 @@ def synthesize_turn_raw(
     route_key = normalize_route(str(route))
     if route_key == "labs":
         system_prompt = SYNTHESIZE_LABS_SYSTEM_PROMPT
+        if is_labs_abnormal_followup_like(message):
+            system_prompt = (
+                f"{system_prompt}\n\n{SYNTHESIZE_LABS_ABNORMAL_FOLLOWUP_ADDENDUM}"
+            )
     elif route_key == "meds":
         system_prompt = SYNTHESIZE_MEDS_SYSTEM_PROMPT
     else:

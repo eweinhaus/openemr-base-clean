@@ -600,6 +600,59 @@ def test_labs_route_emits_summary_segment_first(
     assert any("Summarizing" in p for p in progress)
 
 
+def test_labs_abnormal_followup_emits_visible_answer_or_failure_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UC-2 follow-up: abnormal phrasing must not yield claims-only collapsed UI."""
+    abnormal_synthesis = json.dumps(
+        {
+            "summary": (
+                "None of the verified recent lab results include an abnormal flag on file."
+            )
+        }
+    )
+    synthesize_mock = MagicMock(return_value=abnormal_synthesis)
+    draft_mock = MagicMock(return_value=VALID_LABS_DRAFT)
+    monkeypatch.setattr("sidecar.app.nodes.route.route_message", lambda *_a, **_k: "labs")
+    monkeypatch.setattr("sidecar.app.nodes.draft.draft_claims_raw", draft_mock)
+    monkeypatch.setattr(
+        "sidecar.app.gateway_client.GatewayClient.call_tool",
+        lambda *_a, **_k: LABS_RESULT,
+    )
+    _patch_synthesize_turn_raw(monkeypatch, synthesize_mock)
+
+    transcript = [
+        {"role": "user", "text": "Show recent labs"},
+        {
+            "role": "assistant",
+            "text": "Creatinine is within reference range on the recent CMP.\n"
+            "Serum creatinine 1.1 mg/dL (2026-06-01)",
+        },
+    ]
+    events = _stream_chat(
+        monkeypatch,
+        _chat_payload(
+            message="Do any of these stand out as abnormal?",
+            transcript=transcript,
+        ),
+    )
+    clinical = next(data for name, data in events if name == "clinical")
+
+    synthesize_mock.assert_called_once()
+    draft_kwargs = draft_mock.call_args.kwargs
+    assert draft_kwargs["route"] == "labs"
+
+    summary_segs = [s for s in clinical["segments"] if s.get("kind") == "summary"]
+    assembly_segs = [s for s in clinical["segments"] if s.get("kind") == "assembly"]
+    assert summary_segs or assembly_segs
+    visible_text = clinical["text"].strip()
+    assert visible_text
+    assert (
+        visible_text.startswith("None of the verified")
+        or visible_text.startswith("I couldn't answer this question")
+    )
+
+
 def test_meds_list_route_emits_summary_segment_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
